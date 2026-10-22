@@ -1,2 +1,318 @@
-<!-- test 
--->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Page</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,800;0,900;1,400;1,700&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      /* Color Palette - Design 001 Black & White */
+      --c-black: #0A0A0A;
+      --c-white: #FFFFFF;
+      --c-offwhite: #F4F4F4;
+      --c-midgray: #D0D0D0;
+      --c-darkgray: #555555;
+      --c-border: #E0E0E0;
+
+      /* Fonts */
+      --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+      --font-body: "Inter", system-ui, -apple-system, sans-serif;
+
+      /* Type scale */
+      --fs-h1: 2rem;
+      --fs-h2: 1.5rem;
+      --fs-body: 1rem;
+      --fs-small: 0.875rem;
+      --fs-label: 0.6875rem;
+
+      /* Spacing */
+      --space-s: 8px;
+      --space-m: 16px;
+      --space-l: 24px;
+      --space-xl: 40px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow-x: hidden;
+    }
+
+    body {
+      background-color: var(--c-offwhite);
+      color: var(--c-darkgray);
+      font: 400 var(--fs-body)/1.5 var(--font-body);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Floating Box Layout */
+    .login-container {
+      width: 100%;
+      max-width: 440px;
+      margin-inline: auto;
+      padding-inline: clamp(20px, 5vw, 40px);
+      z-index: 10;
+    }
+
+    .login-card {
+      background: var(--c-white);
+      padding: var(--space-xl);
+      border-radius: 2px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--c-midgray);
+      width: 100%;
+    }
+
+    /* Header Elements */
+    .header-logo {
+      display: block;
+      margin: 0 auto var(--space-l);
+      width: 56px;
+      height: auto;
+      text-align: center;
+    }
+
+   
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: var(--fs-h1);
+      color: var(--c-black);
+      text-align: center;
+      margin-bottom: var(--space-s);
+      line-height: 1.1;
+    }
+
+    .description {
+      text-align: center;
+      font-size: var(--fs-small);
+      color: var(--c-darkgray);
+      margin-bottom: var(--space-xl);
+    }
+
+    /* Form Styles */
+    .form-group {
+      margin-bottom: var(--space-l);
+    }
+
+    label {
+      display: block;
+      font-size: var(--fs-label);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 600;
+      color: var(--c-black);
+      margin-bottom: var(--space-s);
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--c-midgray);
+      font-family: var(--font-body);
+      font-size: var(--fs-body);
+      color: var(--c-black);
+      background: var(--c-white);
+      border-radius: 0;
+      transition: border-color 0.2s ease;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--c-black);
+    }
+
+    .submit-btn {
+      width: 100%;
+      background: var(--c-black);
+      color: var(--c-white);
+      border: none;
+      padding: 16px;
+      font-family: var(--font-body);
+      font-size: var(--fs-body);
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: opacity 0.2s ease;
+      margin-top: var(--space-s);
+    }
+
+    .submit-btn:hover {
+      opacity: 0.9;
+    }
+
+    .submit-btn:active {
+      transform: translateY(1px);
+    }
+
+    .footer-links {
+      margin-top: var(--space-l);
+      text-align: center;
+      font-size: var(--fs-small);
+    }
+
+    .footer-links a {
+      color: var(--c-black);
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    /* Feedback message */
+    #feedback {
+      margin-top: var(--space-m);
+      text-align: center;
+      font-size: var(--fs-small);
+      min-height: 1.5em;
+    }
+
+    .error {
+      color: #d00000;
+    }
+
+    .success {
+      color: #008000;
+    }
+
+    /* Responsiveness */
+    @media (max-width: 480px) {
+      .login-card {
+        padding: var(--space-l);
+      }
+
+      h1 {
+        font-size: 1.75rem;
+      }
+    }
+
+    .password-wrapper {
+      position: relative;
+    }
+
+    .password-wrapper input {
+      padding-right: 65px;
+    }
+
+    #togglePassword {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="login-container">
+    <div class="login-card">
+
+
+      <h1>Login Page</h1>
+      <p class="description">Please enter your credentials to access your account.</p>
+
+      <form id="loginForm">
+        <!-- Section 1 -->
+        <div class="form-group">
+          <label for="s1-f1">Username</label>
+          <input type="text" id="s1-f1" name="username" required aria-required="true">
+        </div>
+
+        <div class="form-group">
+          <label for="s1-f2">Password</label>
+
+          <div class="password-wrapper">
+            <input type="password" id="s1-f2" name="password" required aria-required="true">
+
+            <button type="button" id="togglePassword">
+              Show
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="submit-btn">Login</button>
+      </form>
+
+
+    </div>
+
+
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const loginForm = document.getElementById('loginForm');
+      const feedback = document.getElementById('feedback');
+      const passwordInput = document.getElementById('s1-f2');
+      const togglePassword = document.getElementById('togglePassword');
+
+      togglePassword.addEventListener('click', () => {
+        const isHidden = passwordInput.type === 'password';
+
+        passwordInput.type = isHidden ? 'text' : 'password';
+        togglePassword.textContent = isHidden ? 'Hide' : 'Show';
+      });
+      loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById('s1-f1').value.trim();
+        const password = document.getElementById('s1-f2').value.trim();
+
+        // Simple validation simulation
+        if (!username || !password) {
+          showFeedback('Please fill in all fields.', 'error');
+          return;
+        }
+
+        // Show loading state
+        const btn = loginForm.querySelector('.submit-btn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Authenticating...';
+        feedback.textContent = '';
+
+        // Simulate network delay
+        setTimeout(() => {
+          if (username === "admin" && password === "password") {
+            showFeedback('Login successful. Redirecting...', 'success');
+            btn.textContent = 'Success';
+            // In a real app: window.location.href = '/dashboard';
+          } else {
+            showFeedback('Invalid credentials. Please try again.', 'error');
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }
+        }, 1200);
+      });
+
+      function showFeedback(msg, type) {
+        feedback.textContent = msg;
+        feedback.className = type;
+      }
+    });
+  </script>
+</body>
+
+</html>
