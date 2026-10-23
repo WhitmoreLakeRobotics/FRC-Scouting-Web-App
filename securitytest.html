@@ -12,7 +12,7 @@
     rel="stylesheet">
   <style>
     :root {
-       Color Palette - Design 001 Black & White 
+      /* Color Palette - Design 001 Black & White */
       --c-black: #0A0A0A;
       --c-white: #FFFFFF;
       --c-offwhite: #F4F4F4;
@@ -20,18 +20,18 @@
       --c-darkgray: #555555;
       --c-border: #E0E0E0;
 
-       Fonts 
+      /* Fonts */
       --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
       --font-body: "Inter", system-ui, -apple-system, sans-serif;
 
-       Type scale 
+      /* Type scale */
       --fs-h1: 2rem;
       --fs-h2: 1.5rem;
       --fs-body: 1rem;
       --fs-small: 0.875rem;
       --fs-label: 0.6875rem;
 
-       Spacing 
+      /* Spacing */
       --space-s: 8px;
       --space-m: 16px;
       --space-l: 24px;
@@ -61,7 +61,7 @@
       -webkit-font-smoothing: antialiased;
     }
 
-     Floating Box Layout 
+    /* Floating Box Layout */
     .login-container {
       width: 100%;
       max-width: 440px;
@@ -83,7 +83,7 @@
       text-align: center;
     }
 
-     Header Elements 
+    /* Header Elements */
     .header-logo {
       display: block;
       margin: 0 auto var(--space-l);
@@ -108,7 +108,7 @@
       margin-bottom: var(--space-xl);
     }
 
-     Form Styles 
+    /* Form Styles */
     .form-group {
       margin-bottom: var(--space-l);
       text-align: left;
@@ -178,7 +178,7 @@
       text-underline-offset: 4px;
     }
 
-     Feedback message 
+    /* Feedback message */
     #feedback {
       margin-top: var(--space-m);
       text-align: center;
@@ -194,7 +194,7 @@
       color: #008000;
     }
 
-     Responsiveness 
+    /* Responsiveness */
     @media (max-width: 480px) {
       .login-card {
         padding: var(--space-l);
@@ -267,12 +267,14 @@
       const passwordInput = document.getElementById('s1-f2');
       const togglePassword = document.getElementById('togglePassword');
 
+      // Toggle password visibility
       togglePassword.addEventListener('click', () => {
         const isHidden = passwordInput.type === 'password';
         passwordInput.type = isHidden ? 'text' : 'password';
         togglePassword.textContent = isHidden ? 'Hide' : 'Show';
       });
 
+      // Submit form to Cloudflare Worker endpoint
       loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -305,6 +307,7 @@
             showFeedback('Login successful. Redirecting...', 'success');
             btn.textContent = 'Success';
             
+            // Redirect to protected page proxied by Cloudflare Worker
             window.location.href = '/secret.html';
           } else {
             showFeedback(result.error || 'Invalid credentials. Please try again.', 'error');
