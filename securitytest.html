@@ -46,7 +46,7 @@
     body {
       margin: 0;
       padding: 0;
-      height: 100%;
+      min-height: 100vh;
       width: 100%;
       overflow-x: hidden;
     }
@@ -65,9 +65,12 @@
     .login-container {
       width: 100%;
       max-width: 440px;
-      margin-inline: auto;
+      margin: auto;
       padding-inline: clamp(20px, 5vw, 40px);
       z-index: 10;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
     .login-card {
@@ -77,6 +80,7 @@
       box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
       border: 1px solid var(--c-midgray);
       width: 100%;
+      text-align: center;
     }
 
     /* Header Elements */
@@ -87,8 +91,6 @@
       height: auto;
       text-align: center;
     }
-
-   
 
     h1 {
       font-family: var(--font-display);
@@ -109,6 +111,7 @@
     /* Form Styles */
     .form-group {
       margin-bottom: var(--space-l);
+      text-align: left;
     }
 
     label {
@@ -229,12 +232,10 @@
   <main class="login-container">
     <div class="login-card">
 
-
       <h1>Login Page</h1>
       <p class="description">Please enter your credentials to access your account.</p>
 
       <form id="loginForm">
-        <!-- Section 1 -->
         <div class="form-group">
           <label for="s1-f1">Username</label>
           <input type="text" id="s1-f1" name="username" required aria-required="true">
@@ -255,10 +256,8 @@
         <button type="submit" class="submit-btn">Login</button>
       </form>
 
-
+      <div id="feedback"></div>
     </div>
-
-
   </main>
 
   <script>
@@ -268,43 +267,58 @@
       const passwordInput = document.getElementById('s1-f2');
       const togglePassword = document.getElementById('togglePassword');
 
+      // Toggle password visibility
       togglePassword.addEventListener('click', () => {
         const isHidden = passwordInput.type === 'password';
-
         passwordInput.type = isHidden ? 'text' : 'password';
         togglePassword.textContent = isHidden ? 'Hide' : 'Show';
       });
-      loginForm.addEventListener('submit', (e) => {
+
+      // Submit form to Cloudflare Worker endpoint
+      loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         const username = document.getElementById('s1-f1').value.trim();
         const password = document.getElementById('s1-f2').value.trim();
 
-        // Simple validation simulation
         if (!username || !password) {
           showFeedback('Please fill in all fields.', 'error');
           return;
         }
 
-        // Show loading state
         const btn = loginForm.querySelector('.submit-btn');
         const originalText = btn.textContent;
         btn.disabled = true;
         btn.textContent = 'Authenticating...';
         feedback.textContent = '';
 
-        // Simulate network delay
-        setTimeout(() => {
-          if (username === "admin" && password === "password") {
+        try {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+          });
+
+          const result = await response.json();
+
+          if (response.ok && result.success) {
             showFeedback('Login successful. Redirecting...', 'success');
             btn.textContent = 'Success';
-            // In a real app: window.location.href = '/dashboard';
+            
+            // Redirect to protected page proxied by Cloudflare Worker
+            window.location.href = '/secret.html';
           } else {
-            showFeedback('Invalid credentials. Please try again.', 'error');
+            showFeedback(result.error || 'Invalid credentials. Please try again.', 'error');
             btn.disabled = false;
             btn.textContent = originalText;
           }
-        }, 1200);
+        } catch (error) {
+          showFeedback('An error occurred. Please try again.', 'error');
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
       });
 
       function showFeedback(msg, type) {
