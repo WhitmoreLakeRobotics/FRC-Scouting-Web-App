@@ -308,7 +308,7 @@
             btn.textContent = 'Success';
             
             // Redirect to protected page proxied by Cloudflare Worker
-            window.location.href = '/secret.html';
+            window.location.href = '/index.html';
           } else {
             showFeedback(result.error || 'Invalid credentials. Please try again.', 'error');
             btn.disabled = false;
