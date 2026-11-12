@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -26,7 +27,7 @@
             margin-bottom: 20px;
         }
 
-        .input[type="text"],
+        input[type="text"],
         input:not([type]) {
             padding: 10px;
             width: 250px;
@@ -52,8 +53,7 @@
             margin-top: 15px;
         }
 
-        th,
-        td {
+        th, td {
             border: 1px solid #ddd;
             padding: 8px;
             text-align: left;
@@ -99,413 +99,496 @@
 
 <body>
 
-    <div class="container">
+<div class="container">
 
-        <button class="logout" type="button" onclick="logout()">
-            Logout
-        </button>
+    <button class="logout" type="button" onclick="logout()">
+        Logout
+    </button>
 
-        <div class="card">
-            <h1>FRC Event Analyzer</h1>
+    <div class="card">
 
+        <h1>FRC Event Analyzer</h1>
 
-            <p>Select an event:</p>
+        <p>Select an event:</p>
 
-            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
 
-                <div>
-                    <label for="yearSelect">Year:</label><br>
-                    <select id="yearSelect" onchange="loadEvents()" style="padding:10px;width:180px;">
-                    </select>
-                </div>
-
-                <div>
-                    <label for="eventSelect">Event:</label><br>
-                    <select id="eventSelect" style="padding:10px;width:320px;" disabled>
-                        <option value="">Select a year first</option>
-                    </select>
-                </div>
-
+            <div>
+                <label for="yearSelect">Year:</label><br>
+                <select id="yearSelect"
+                    onchange="loadEvents()"
+                    style="padding:10px;width:180px;">
+                </select>
             </div>
 
-            <br>
-
-            <button onclick="analyzeEvent()">Analyze Event</button>
-
-            <p id="status"></p>
-
-
-            <div class="card">
-                <h2>All Teams:</h2>
-                <div id="results"></div>
+            <div>
+                <label for="eventSelect">Event:</label><br>
+                <select id="eventSelect"
+                    style="padding:10px;width:320px;"
+                    disabled>
+                    <option value="">Select a year first</option>
+                </select>
             </div>
 
-            <button onclick="exportScoutingData()">
-                Export Event
-            </button>
-
-            <button onclick="triggerImport()">
-                Import Event
-            </button>
-
-            <input id="importFile" type="file" accept=".json" hidden onchange="readImportFile(event)">
         </div>
 
-        <script>
-            let importedData = null;
-            let selectedTeams = new Set();
+        <br>
 
-            function getParams() {
-                const p = new URLSearchParams(window.location.search);
+        <button onclick="analyzeEvent()">
+            Analyze Event
+        </button>
 
-                return {
-                    event: p.get("event"),
-                    team: p.get("team")
-                };
-            }
+        <p id="status"></p>
 
-            function openTeam(eventKey, teamNumber) {
-                window.open(`?event=${eventKey}&team=${teamNumber}`, "_blank");
-            }
+        <div class="card">
+            <h2>All Teams:</h2>
+            <div id="results"></div>
+        </div>
 
-            const TBA_KEY = "kjYvgurAPpTKfVOXRauXV5z4VjnyZ5wpv6t8GjIj51x3yjCrUxZUisXQ4MJpOFtJ";
-            const BASE_URL = "https://www.thebluealliance.com/api/v3";
+        <button onclick="exportScoutingData()">
+            Export Event
+        </button>
 
+        <button onclick="triggerImport()">
+            Import Event
+        </button>
 
+        <input
+            id="importFile"
+            type="file"
+            accept=".json"
+            hidden
+            onchange="readImportFile(event)"
+        >
 
-            async function tba(path) {
-                const response = await fetch(
-                    "/api/tba?path=" + encodeURIComponent(path)
-                );
+    </div>
 
-                if (!response.ok) {
-                    throw new Error(`TBA Error ${response.status}`);
-                }
+</div>
 
-                return response.json();
-            }
+<script>
 
+let importedData = null;
+let selectedTeams = new Set();
 
 
-            async function loadEvents() {
-                const year = document.getElementById("yearSelect").value;
-                const eventSelect = document.getElementById("eventSelect");
-                const status = document.getElementById("status");
+// ======================================
+// URL PARAMETERS
+// ======================================
 
-                eventSelect.innerHTML =
-                    '<option value="">Loading events...</option>';
+function getParams() {
+    const p = new URLSearchParams(window.location.search);
 
-                eventSelect.disabled = true;
+    return {
+        event: p.get("event"),
+        team: p.get("team")
+    };
+}
 
-                if (!year) {
-                    eventSelect.innerHTML =
-                        '<option value="">Select a year first</option>';
-                    return;
-                }
 
-                status.innerText = "Loading all FRC events...";
+function openTeam(eventKey, teamNumber) {
+    const url = new URL(window.location.href);
 
-                try {
-                    const events = await tba(`/events/${year}`);
+    url.searchParams.set("event", eventKey);
+    url.searchParams.set("team", teamNumber);
 
-                    events.sort((a, b) =>
-                        a.start_date.localeCompare(b.start_date)
-                    );
+    window.open(url.toString(), "_blank");
+}
 
-                    eventSelect.innerHTML =
-                        '<option value="">Select an event</option>';
 
-                    events.forEach(event => {
-                        const option = document.createElement("option");
+// ======================================
+// CLOUDFLARE WORKER FETCH FUNCTION
+// ======================================
 
-                        option.value = event.key;
+async function tba(path) {
 
-                        option.textContent =
-                            `${event.name} - ${event.city}, ${event.state_prov || event.country}`;
+    if (
+        typeof path !== "string" ||
+        !/^\/[a-zA-Z0-9_/-]+$/.test(path) ||
+        path.includes("..")
+    ) {
+        throw new Error("Invalid TBA API path.");
+    }
 
-                        eventSelect.appendChild(option);
-                    });
-
-                    eventSelect.disabled = false;
-
-                    status.innerText =
-                        `Found ${events.length} FRC events worldwide for ${year}.`;
-
-                } catch (error) {
-                    console.error(error);
-
-                    eventSelect.innerHTML =
-                        '<option value="">Failed to load events</option>';
-
-                    status.innerText = "Could not load events from The Blue Alliance.";
-                }
-            }
-
-            function loadYears() {
-                const yearSelect = document.getElementById("yearSelect");
-
-                const currentYear = new Date().getFullYear();
-
-                yearSelect.innerHTML =
-                    '<option value="">Select Year</option>';
-
-                for (let year = currentYear - 5; year <= currentYear + 5; year++) {
-                    const option = document.createElement("option");
-
-                    option.value = year;
-                    option.textContent = year;
-
-                    yearSelect.appendChild(option);
-                }
-
-                yearSelect.value = currentYear;
-
-                loadEvents();
-            }
-
-            window.addEventListener("DOMContentLoaded", loadYears);
-
-
-
-            function calculateScore(team) {
-                return (
-                    team.opr * 0.45 +
-                    team.ccwm * 0.35 +
-                    team.winPct * 0.20
-                );
-            }
-
-            function generateSummary(team) {
-                const strengths = [];
-
-                if (team.opr > 40) {
-                    strengths.push("Elite offensive output");
-                }
-
-                if (team.ccwm > 15) {
-                    strengths.push("Strong winning impact");
-                }
-
-                if (team.winPct > 0.70) {
-                    strengths.push("Consistent match results");
-                }
-
-                if (strengths.length === 0) {
-                    strengths.push("Developing performance profile");
-                }
-
-                return strengths.join(", ");
-            }
-
-            async function loadTeamPage(eventKey, teamNumber) {
-                    const status = document.getElementById("status");
-                    const results = document.getElementById("results");
-
-                    status.innerText = "Loading team...";
-
-                    try {
-                        const [teams, rankings, oprs] = await Promise.all([
-                            tba(`/event/${eventKey}/teams/simple`),
-                            tba(`/event/${eventKey}/rankings`),
-                            tba(`/event/${eventKey}/oprs`)
-                        ]);
-
-                        const team = teams.find(
-                            t => String(t.team_number) === String(teamNumber)
-                        );
-
-                        if (!team) {
-                            results.innerHTML = "<h2>Team not found.</h2>";
-                            return;
-                        }
-
-                        const rankData = rankings.rankings.find(
-                            r => r.team_key === team.key
-                        );
-
-                        const wins = rankData?.record?.wins || 0;
-                        const losses = rankData?.record?.losses || 0;
-
-                        const winPct = wins + losses > 0 ?
-                            wins / (wins + losses) :
-                            0;
-
-                        const analyzed = {
-                            teamNumber: team.team_number,
-                            nickname: team.nickname || "",
-                            opr: oprs.oprs?.[team.key] || 0,
-                            ccwm: oprs.ccwms?.[team.key] || 0,
-                            rank: rankData?.rank || 999,
-                            wins,
-                            losses,
-                            winPct
-                        };
-
-                        analyzed.score = calculateScore(analyzed);
-
-                        results.innerHTML = `
-                    <h2>
-                        Team ${analyzed.teamNumber}
-                        - ${analyzed.nickname}
-                    </h2>
-
-                    <div style="margin-bottom:15px;">
-                        <label>
-                            match:
-                            <select id="roundSelector">
-                                ${Array.from({ length: 20 }, (_, i) =>
-                                    ` < option value = "${i + 1}" > match $ {
-                            i + 1
-                        } < /option>`
-                    ).join("")
-                } <
-                /select> < /
-            label > <
-                /div>
-
-                <
-                div class = "summary" >
-                <
-                p >
-                <
-                strong > Overall Score: < /strong>
-            $ {
-                analyzed.score.toFixed(2)
-            } <
-            /p>
-
-            <
-            p >
-                <
-                strong > Official Rank: < /strong>
-            $ {
-                analyzed.rank
-            } <
-            /p>
-
-            <
-            p >
-                <
-                strong > Record: < /strong>
-            $ {
-                analyzed.wins
-            } - $ {
-                analyzed.losses
-            } <
-            /p>
-
-            <
-            p >
-                <
-                strong > OPR: < /strong>
-            $ {
-                analyzed.opr.toFixed(2)
-            } <
-            /p>
-
-            <
-            p >
-                <
-                strong > CCWM: < /strong>
-            $ {
-                analyzed.ccwm.toFixed(2)
-            } <
-            /p>
-
-            <
-            div >
-                <
-                label style = "display:flex;align-items:center;gap:4px;margin:2px 0;" >
-                <
-                span > Kitbot ? < /span> <
-            input type = "checkbox"
-            id = "kitbot" >
-                <
-                /label>
-
-                <
-                label style = "display:flex;align-items:center;gap:4px;margin:2px 0;" >
-                <
-                span > Stuck on Fuel ? < /span> <
-            input type = "checkbox"
-            id = "fuel" >
-                <
-                /label>
-
-                <
-                label style = "display:flex;align-items:center;gap:4px;margin:2px 0;" >
-                <
-                span > Alive whole match ? < /span> <
-            input type = "checkbox"
-            id = "alive" >
-                <
-                /label> < /
-            div >
-
-                <
-                div >
-                <
-                strong > Scouting Notes: < /strong> <
-            br >
-
-                <
-                textarea
-            id = "notes"
-            style = "
-            width: 100 % ;
-            min - height: 150 px;
-            margin - top: 5 px;
-            padding: 8 px;
-            resize: vertical;
-            "
-            placeholder = "Enter scouting notes here..." >
-                <
-                /textarea> < /
-            div > <
-                /div>
-            `;
-
-                const roundSelector = document.getElementById("roundSelector");
-
-                loadRound(eventKey, teamNumber);
-
-                roundSelector.addEventListener("change", () => {
-                    loadRound(eventKey, teamNumber);
-                });
-
-                document.getElementById("kitbot").addEventListener(
-                    "change",
-                    () => saveRound(eventKey, teamNumber)
-                );
-
-                document.getElementById("fuel").addEventListener(
-                    "change",
-                    () => saveRound(eventKey, teamNumber)
-                );
-
-                document.getElementById("alive").addEventListener(
-                    "change",
-                    () => saveRound(eventKey, teamNumber)
-                );
-
-                document.getElementById("notes").addEventListener(
-                    "input",
-                    () => saveRound(eventKey, teamNumber)
-                );
-
-                status.innerText = `
-            Viewing Team $ {
-                teamNumber
-            }
-            `;
-
-            } catch (error) {
-                console.error(error);
-                status.innerText = "Failed to load team.";
+    const response = await fetch(
+        "/api/tba?path=" + encodeURIComponent(path),
+        {
+            method: "GET",
+            credentials: "same-origin",
+            headers: {
+                "Accept": "application/json"
             }
         }
+    );
 
-        
+    if (!response.ok) {
+        const message = await response.text();
+
+        throw new Error(
+            `TBA API error ${response.status}: ${message}`
+        );
+    }
+
+    return response.json();
+}
+
+
+// ======================================
+// LOAD EVENTS
+// ======================================
+
+async function loadEvents() {
+
+    const year = document.getElementById("yearSelect").value;
+
+    const eventSelect =
+        document.getElementById("eventSelect");
+
+    const status =
+        document.getElementById("status");
+
+    eventSelect.innerHTML =
+        '<option value="">Loading events...</option>';
+
+    eventSelect.disabled = true;
+
+    if (!year) {
+        eventSelect.innerHTML =
+            '<option value="">Select a year first</option>';
+
+        return;
+    }
+
+    status.innerText = "Loading all FRC events...";
+
+    try {
+
+        const events = await tba(`/events/${year}`);
+
+        if (!Array.isArray(events)) {
+            throw new Error("Invalid event data.");
+        }
+
+        events.sort((a, b) =>
+            a.start_date.localeCompare(b.start_date)
+        );
+
+        eventSelect.innerHTML =
+            '<option value="">Select an event</option>';
+
+        events.forEach(event => {
+
+            const option = document.createElement("option");
+
+            option.value = event.key;
+
+            option.textContent =
+                `${event.name} - ${event.city}, ${
+                    event.state_prov || event.country
+                }`;
+
+            eventSelect.appendChild(option);
+
+        });
+
+        eventSelect.disabled = false;
+
+        status.innerText =
+            `Found ${events.length} FRC events worldwide for ${year}.`;
+
+    } catch (error) {
+
+        console.error(error);
+
+        eventSelect.innerHTML =
+            '<option value="">Failed to load events</option>';
+
+        status.innerText =
+            "Could not load events from The Blue Alliance.";
+    }
+}
+
+
+// ======================================
+// LOAD YEARS
+// ======================================
+
+function loadYears() {
+
+    const yearSelect =
+        document.getElementById("yearSelect");
+
+    const currentYear = new Date().getFullYear();
+
+    yearSelect.innerHTML =
+        '<option value="">Select Year</option>';
+
+    for (
+        let year = currentYear - 5;
+        year <= currentYear + 5;
+        year++
+    ) {
+
+        const option = document.createElement("option");
+
+        option.value = year;
+        option.textContent = year;
+
+        yearSelect.appendChild(option);
+    }
+
+    yearSelect.value = currentYear;
+
+    loadEvents();
+}
+
+
+window.addEventListener("DOMContentLoaded", loadYears);
+
+
+// ======================================
+// TEAM SCORING
+// ======================================
+
+function calculateScore(team) {
+
+    return (
+        team.opr * 0.45 +
+        team.ccwm * 0.35 +
+        team.winPct * 0.20
+    );
+}
+
+
+function generateSummary(team) {
+
+    const strengths = [];
+
+    if (team.opr > 40) {
+        strengths.push("Elite offensive output");
+    }
+
+    if (team.ccwm > 15) {
+        strengths.push("Strong winning impact");
+    }
+
+    if (team.winPct > 0.70) {
+        strengths.push("Consistent match results");
+    }
+
+    if (strengths.length === 0) {
+        strengths.push("Developing performance profile");
+    }
+
+    return strengths.join(", ");
+}
+
+
+// ======================================
+// LOAD TEAM PAGE
+// ======================================
+
+async function loadTeamPage(eventKey, teamNumber) {
+
+    const status = document.getElementById("status");
+
+    const results = document.getElementById("results");
+
+    status.innerText = "Loading team...";
+
+    try {
+
+        const [teams, rankings, oprs] = await Promise.all([
+
+            tba(`/event/${eventKey}/teams/simple`),
+
+            tba(`/event/${eventKey}/rankings`),
+
+            tba(`/event/${eventKey}/oprs`)
+
+        ]);
+
+        const team = teams.find(
+            t => String(t.team_number) === String(teamNumber)
+        );
+
+        if (!team) {
+
+            results.innerHTML = "<h2>Team not found.</h2>";
+
+            return;
+        }
+
+        const rankData = rankings.rankings?.find(
+            r => r.team_key === team.key
+        );
+
+        const wins = Number(rankData?.record?.wins) || 0;
+
+        const losses = Number(rankData?.record?.losses) || 0;
+
+        const winPct =
+            wins + losses > 0
+                ? wins / (wins + losses)
+                : 0;
+
+        const analyzed = {
+
+            teamNumber: team.team_number,
+
+            nickname: team.nickname || "",
+
+            opr: Number(oprs.oprs?.[team.key]) || 0,
+
+            ccwm: Number(oprs.ccwms?.[team.key]) || 0,
+
+            rank: Number(rankData?.rank) || 999,
+
+            wins,
+            losses,
+            winPct
+        };
+
+        analyzed.score = calculateScore(analyzed);
+
+
+        // ======================================
+        // TEAM PAGE HTML
+        // ======================================
+
+        results.innerHTML = `
+
+            <h2>
+                Team ${analyzed.teamNumber}
+                - ${analyzed.nickname}
+            </h2>
+
+            <div style="margin-bottom:15px;">
+
+                <label>
+                    Match:
+
+                    <select id="roundSelector">
+
+                        ${Array.from({ length: 20 }, (_, i) =>
+                            `<option value="${i + 1}">
+                                Match ${i + 1}
+                            </option>`
+                        ).join("")}
+
+                    </select>
+
+                </label>
+
+            </div>
+
+
+            <div class="summary">
+
+                <p>
+                    <strong>Overall Score:</strong>
+                    ${analyzed.score.toFixed(2)}
+                </p>
+
+                <p>
+                    <strong>Official Rank:</strong>
+                    ${analyzed.rank === 999 ? "N/A" : analyzed.rank}
+                </p>
+
+                <p>
+                    <strong>Record:</strong>
+                    ${analyzed.wins}-${analyzed.losses}
+                </p>
+
+                <p>
+                    <strong>OPR:</strong>
+                    ${analyzed.opr.toFixed(2)}
+                </p>
+
+                <p>
+                    <strong>CCWM:</strong>
+                    ${analyzed.ccwm.toFixed(2)}
+                </p>
+
+                <div>
+
+                    <label style="display:flex;gap:4px;margin:5px 0;">
+                        <span>Kitbot?</span>
+                        <input type="checkbox" id="kitbot">
+                    </label>
+
+                    <label style="display:flex;gap:4px;margin:5px 0;">
+                        <span>Stuck on Fuel?</span>
+                        <input type="checkbox" id="fuel">
+                    </label>
+
+                    <label style="display:flex;gap:4px;margin:5px 0;">
+                        <span>Alive whole match?</span>
+                        <input type="checkbox" id="alive">
+                    </label>
+
+                </div>
+
+                <div>
+
+                    <strong>Scouting Notes:</strong>
+
+                    <br>
+
+                    <textarea
+                        id="notes"
+                        style="
+                            width:100%;
+                            min-height:150px;
+                            margin-top:5px;
+                            padding:8px;
+                            resize:vertical;
+                        "
+                        placeholder="Enter scouting notes here..."
+                    ></textarea>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        // Load scouting data.
+
+        const roundSelector =
+            document.getElementById("roundSelector");
+
+        loadRound(eventKey, teamNumber);
+
+        roundSelector.addEventListener("change", () => {
+            loadRound(eventKey, teamNumber);
+        });
+
+        ["kitbot", "fuel", "alive"].forEach(id => {
+
+            document.getElementById(id).addEventListener(
+                "change",
+                () => saveRound(eventKey, teamNumber)
+            );
+
+        });
+
+        document.getElementById("notes").addEventListener(
+            "input",
+            () => saveRound(eventKey, teamNumber)
+        );
+
+        status.innerText =
+            `Viewing Team ${teamNumber}`;
+
+    } catch (error) {
+
+        console.error(error);
+
+        status.innerText =
+            "Failed to load team: " + error.message;
+    }
+}
 
 async function analyzeEvent() {
     const eventKey = document.getElementById("eventSelect").value;
@@ -518,89 +601,81 @@ async function analyzeEvent() {
     }
 
     results.innerHTML = "";
-    status.innerText = "Loading event " + eventKey + "...";
+    status.innerText = `Loading event ${eventKey}...`;
 
     try {
-        // Load teams, rankings, and OPR data.
         const [teamsResult, rankingsResult, oprsResult] =
             await Promise.allSettled([
-                tba(` / event / $ {
-                eventKey
-            }
-            /teams/simple
-            `),
-                tba(` / event / $ {
-                eventKey
-            }
-            /rankings`),
-            tba(`/event/${eventKey}/oprs`)
+                tba(`/event/${eventKey}/teams/simple`),
+                tba(`/event/${eventKey}/rankings`),
+                tba(`/event/${eventKey}/oprs`)
             ]);
 
-            // Teams are required.
-            if (teamsResult.status === "rejected") {
-                throw teamsResult.reason;
-            }
+        if (teamsResult.status === "rejected") {
+            throw teamsResult.reason;
+        }
 
-            const teams = teamsResult.value;
+        const teams = teamsResult.value;
 
-            if (!Array.isArray(teams)) {
-                throw new Error("Invalid team data returned by TBA.");
-            }
+        if (!Array.isArray(teams)) {
+            throw new Error("Invalid team data returned by TBA.");
+        }
 
-            // Rankings and OPR are optional.
-            const rankings = rankingsResult.status === "fulfilled" ?
-                rankingsResult.value :
-                null;
+        if (teams.length === 0) {
+            results.innerHTML = "<p>No teams found.</p>";
+            status.innerText = "No teams found for this event.";
+            return;
+        }
 
-            const oprs = oprsResult.status === "fulfilled" ?
-                oprsResult.value :
-                null;
+        const rankings =
+            rankingsResult.status === "fulfilled"
+                ? rankingsResult.value
+                : null;
 
-            const rankingMap = {};
+        const oprs =
+            oprsResult.status === "fulfilled"
+                ? oprsResult.value
+                : null;
 
-            if (Array.isArray(rankings?.rankings)) {
-                rankings.rankings.forEach(r => {
-                    rankingMap[r.team_key] = r;
-                });
-            }
+        const rankingMap = {};
 
-            // Analyze every team.
-            const analyzedTeams = teams.map(team => {
-                const rankData = rankingMap[team.key];
-
-                const wins = rankData?.record?.wins || 0;
-                const losses = rankData?.record?.losses || 0;
-
-                const winPct = wins + losses > 0 ?
-                    wins / (wins + losses) :
-                    0;
-
-                const analyzed = {
-                    teamNumber: team.team_number,
-                    nickname: team.nickname || "",
-                    teamKey: team.key,
-
-                    opr: oprs?.oprs?.[team.key] || 0,
-                    ccwm: oprs?.ccwms?.[team.key] || 0,
-                    dpr: oprs?.dprs?.[team.key] || 0,
-
-                    rank: rankData?.rank || 999,
-
-                    wins,
-                    losses,
-                    winPct
-                };
-
-                analyzed.score = calculateScore(analyzed);
-
-                return analyzed;
+        if (Array.isArray(rankings?.rankings)) {
+            rankings.rankings.forEach(r => {
+                rankingMap[r.team_key] = r;
             });
+        }
 
-            // Sort by calculated score.
-            analyzedTeams.sort((a, b) => b.score - a.score);
+        const analyzedTeams = teams.map(team => {
+            const rankData = rankingMap[team.key];
 
-            // Build results table.
-            let html = `
+            const wins = Number(rankData?.record?.wins) || 0;
+            const losses = Number(rankData?.record?.losses) || 0;
+
+            const winPct = wins + losses > 0
+                ? wins / (wins + losses)
+                : 0;
+
+            const analyzed = {
+                teamNumber: team.team_number,
+                nickname: team.nickname || "",
+                teamKey: team.key,
+                opr: Number(oprs?.oprs?.[team.key]) || 0,
+                ccwm: Number(oprs?.ccwms?.[team.key]) || 0,
+                dpr: Number(oprs?.dprs?.[team.key]) || 0,
+                rank: Number(rankData?.rank) || 999,
+                wins,
+                losses,
+                winPct
+            };
+
+            analyzed.score = calculateScore(analyzed);
+
+            return analyzed;
+        });
+
+        analyzedTeams.sort((a, b) => b.score - a.score);
+
+        let html = `
             <h3>Event: ${eventKey}</h3>
 
             ${!rankings
@@ -626,480 +701,417 @@ async function analyzeEvent() {
                 <tbody>
         `;
 
-            analyzedTeams.forEach((team, index) => {
-                let cls = "";
+        analyzedTeams.forEach((team, index) => {
+            let cls = "";
 
-                if (index === 0) cls = "rank1";
-                if (index === 1) cls = "rank2";
-                if (index === 2) cls = "rank3";
+            if (index === 0) cls = "rank1";
+            if (index === 1) cls = "rank2";
+            if (index === 2) cls = "rank3";
 
-                html += `
+            html += `
                 <tr class="${cls}">
                     <td>${index + 1}</td>
-
                     <td>
                         <a href="#"
                            onclick="openTeam('${eventKey}','${team.teamNumber}'); return false;">
                             ${team.teamNumber} - ${team.nickname}
                         </a>
                     </td>
-
-                    <td>
-                        ${team.rank === 999 ? "N/A" : team.rank}
-                    </td>
-
-                    <td>
-                        ${team.wins}-${team.losses}
-                    </td>
-
-                    <td>
-                        ${team.opr.toFixed(2)}
-                    </td>
-
-                    <td>
-                        ${team.ccwm.toFixed(2)}
-                    </td>
-
-                    <td>
-                        ${team.score.toFixed(2)}
-                    </td>
+                    <td>${team.rank === 999 ? "N/A" : team.rank}</td>
+                    <td>${team.wins}-${team.losses}</td>
+                    <td>${team.opr.toFixed(2)}</td>
+                    <td>${team.ccwm.toFixed(2)}</td>
+                    <td>${team.score.toFixed(2)}</td>
                 </tr>
             `;
-            });
+        });
 
-            html += `
+        html += `
                 </tbody>
             </table>
         `;
 
-            results.innerHTML = html;
+        results.innerHTML = html;
 
-            status.innerText =
-                `Successfully analyzed ${teams.length} teams at ${eventKey}.`;
+        status.innerText =
+            `Successfully analyzed ${teams.length} teams at ${eventKey}.`;
 
+    } catch (error) {
+        console.error("Event analysis failed:", error);
+        status.innerText = "Error loading event: " + error.message;
+    }
+}
+
+
+// SCOUTING DATA
+
+function scoutingKey(eventKey, teamNumber, round) {
+    return `scouting_${eventKey}_${teamNumber}_round_${round}`;
+}
+
+function saveRound(eventKey, teamNumber) {
+    const match = document.getElementById("roundSelector").value;
+
+    const data = {
+        kitbot: document.getElementById("kitbot").checked,
+        fuel: document.getElementById("fuel").checked,
+        alive: document.getElementById("alive").checked,
+        notes: document.getElementById("notes").value
+    };
+
+    localStorage.setItem(
+        scoutingKey(eventKey, teamNumber, match),
+        JSON.stringify(data)
+    );
+}
+
+function loadRound(eventKey, teamNumber) {
+    const match = document.getElementById("roundSelector").value;
+
+    const data = JSON.parse(
+        localStorage.getItem(
+            scoutingKey(eventKey, teamNumber, match)
+        ) || "{}"
+    );
+
+    document.getElementById("kitbot").checked = data.kitbot || false;
+    document.getElementById("fuel").checked = data.fuel || false;
+    document.getElementById("alive").checked = data.alive || false;
+    document.getElementById("notes").value = data.notes || "";
+}
+
+
+// URL HANDLING
+
+window.addEventListener("load", async () => {
+    const params = getParams();
+
+    if (params.event && params.team) {
+        loadTeamPage(params.event, params.team);
+    } else if (params.event) {
+        await analyzeEventFromURL(params.event);
+    }
+});
+
+async function analyzeEventFromURL(eventKey) {
+    try {
+        const event = await tba(`/event/${eventKey}`);
+
+        document.getElementById("yearSelect").value = event.year;
+
+        await loadEvents();
+
+        document.getElementById("eventSelect").value = eventKey;
+
+        await analyzeEvent();
+
+    } catch (error) {
+        console.error(error);
+        document.getElementById("status").innerText =
+            "Could not load event from URL.";
+    }
+}
+
+
+// EXPORT SCOUTING DATA
+
+function exportScoutingData() {
+    const params = getParams();
+
+    if (!params.event) {
+        alert("Open an event first.");
+        return;
+    }
+
+    const exportData = {
+        event: params.event,
+        teams: {}
+    };
+
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+
+        if (!key.startsWith("scouting_")) continue;
+
+        const parts = key.split("_");
+        const eventKey = parts[1];
+        const team = parts[2];
+        const round = parts[4];
+
+        if (eventKey !== params.event) continue;
+
+        if (!exportData.teams[team]) {
+            exportData.teams[team] = {
+                rounds: {}
+            };
+        }
+
+        exportData.teams[team].rounds[round] =
+            JSON.parse(localStorage.getItem(key));
+    }
+
+    const blob = new Blob(
+        [JSON.stringify(exportData, null, 2)],
+        { type: "application/json" }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = params.event + ".json";
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+
+
+// IMPORT SCOUTING DATA
+
+function readImportFile(event) {
+    const file = event.target.files[0];
+
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+        try {
+            importedData = JSON.parse(e.target.result);
+
+            if (!importedData.event || !importedData.teams) {
+                throw new Error("Invalid scouting file structure.");
             }
-            catch (error) {
-                console.error("Event analysis failed:", error);
 
-                status.innerText =
-                    "Error loading event: " + error.message;
-            }
-            }
+            buildTeamList();
 
+        } catch (error) {
+            console.error(error);
+            alert("Invalid scouting file.");
+        }
+    };
 
-
-            function scoutingKey(eventKey, teamNumber, round) {
-                return `scouting_${eventKey}_${teamNumber}_round_${round}`;
-            }
-
-            function saveRound(eventKey, teamNumber) {
-                const match = document.getElementById("roundSelector").value;
-
-                const data = {
-                    kitbot: document.getElementById("kitbot").checked,
-                    fuel: document.getElementById("fuel").checked,
-                    alive: document.getElementById("alive").checked,
-                    notes: document.getElementById("notes").value
-                };
-
-                localStorage.setItem(
-                    scoutingKey(eventKey, teamNumber, match),
-                    JSON.stringify(data)
-                );
-            }
-
-            function loadRound(eventKey, teamNumber) {
-                const match = document.getElementById("roundSelector").value;
-
-                const data = JSON.parse(
-                    localStorage.getItem(
-                        scoutingKey(eventKey, teamNumber, match)
-                    )
-                ) || {};
-
-                document.getElementById("kitbot").checked = data.kitbot || false;
-                document.getElementById("fuel").checked = data.fuel || false;
-                document.getElementById("alive").checked = data.alive || false;
-                document.getElementById("notes").value = data.notes || "";
-            }
+    reader.readAsText(file);
+    event.target.value = "";
+}
 
 
-            window.addEventListener("load", async () => {
-                const params = getParams();
+function buildTeamList() {
+    selectedTeams.clear();
 
-                if (params.event && params.team) {
-                    loadTeamPage(params.event, params.team);
+    const div = document.getElementById("teamList");
+    div.innerHTML = "";
 
-                } else if (params.event) {
-                    analyzeEventFromURL(params.event);
+    const eventKey = importedData.event;
 
+    Object.keys(importedData.teams)
+        .sort((a, b) => Number(a) - Number(b))
+        .forEach(team => {
+
+            let exists = false;
+
+            for (let i = 1; i <= 20; i++) {
+                if (localStorage.getItem(
+                    `scouting_${eventKey}_${team}_round_${i}`
+                )) {
+                    exists = true;
+                    break;
                 }
+            }
+
+            const row = document.createElement("div");
+            row.className = "teamEntry";
+
+            row.innerHTML = `
+                <label>
+                    <input type="checkbox" value="${team}">
+                    Team ${team}
+                </label>
+
+                ${exists
+                    ? '<span class="teamExists">Already Exists</span>'
+                    : ""}
+            `;
+
+            div.appendChild(row);
+        });
+
+    document.getElementById("importDialog").style.display = "block";
+
+    hookSearch();
+    hookCheckboxes();
+}
+
+
+function hookCheckboxes() {
+    document.querySelectorAll("#teamList input").forEach(box => {
+        box.onchange = function() {
+            if (this.checked) {
+                selectedTeams.add(this.value);
+            } else {
+                selectedTeams.delete(this.value);
+            }
+        };
+    });
+}
+
+
+function hookSearch() {
+    const search = document.getElementById("teamSearch");
+
+    search.oninput = function() {
+        const value = this.value.toLowerCase();
+
+        document.querySelectorAll("#teamList .teamEntry")
+            .forEach(row => {
+                row.style.display =
+                    row.innerText.toLowerCase().includes(value)
+                        ? "flex"
+                        : "none";
             });
+    };
+}
 
-            async function analyzeEventFromURL(eventKey) {
-                // Preserve compatibility with existing event links.
-                const event = await tba(`/event/${eventKey}`);
 
-                document.getElementById("yearSelect").value =
-                    event.year;
+function selectAllTeams() {
+    document.querySelectorAll("#teamList input").forEach(c => {
+        c.checked = true;
+        selectedTeams.add(c.value);
+    });
+}
 
-                await loadEvents();
 
-                document.getElementById("eventSelect").value =
-                    eventKey;
+function clearAllTeams() {
+    document.querySelectorAll("#teamList input").forEach(c => {
+        c.checked = false;
+    });
 
-                analyzeEvent();
+    selectedTeams.clear();
+}
+
+
+function closeImportDialog() {
+    document.getElementById("importDialog").style.display = "none";
+}
+
+
+function finishImport() {
+    if (!importedData) {
+        alert("No file loaded.");
+        return;
+    }
+
+    if (selectedTeams.size === 0) {
+        alert("No teams selected.");
+        return;
+    }
+
+    const eventKey = importedData.event;
+
+    let importedCount = 0;
+    let overwrittenCount = 0;
+
+    selectedTeams.forEach(team => {
+        const teamData = importedData.teams[team];
+
+        if (!teamData || !teamData.rounds) return;
+
+        let exists = false;
+
+        for (let i = 1; i <= 20; i++) {
+            if (localStorage.getItem(
+                `scouting_${eventKey}_${team}_round_${i}`
+            )) {
+                exists = true;
+                break;
             }
+        }
 
+        if (exists) {
+            const ok = confirm(
+                `Team ${team} already exists.\nOverwrite its scouting data?`
+            );
 
-            function exportScoutingData() {
-                const params = getParams();
+            if (!ok) return;
 
-                if (!params.event) {
-                    alert("Open an event first.");
-                    return;
-                }
-
-                const exportData = {
-                    event: params.event,
-                    teams: {}
-                };
-
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-
-                    if (!key.startsWith("scouting_")) continue;
-
-                    const parts = key.split("_");
-                    const eventKey = parts[1];
-                    const team = parts[2];
-                    const round = parts[4];
-
-                    if (eventKey !== params.event) continue;
-
-                    if (!exportData.teams[team]) {
-                        exportData.teams[team] = {
-                            rounds: {}
-                        };
-                    }
-
-                    exportData.teams[team].rounds[round] =
-                        JSON.parse(localStorage.getItem(key));
-                }
-
-                const blob = new Blob(
-                    [JSON.stringify(exportData, null, 2)], {
-                        type: "application/json"
-                    }
+            for (let i = 1; i <= 20; i++) {
+                localStorage.removeItem(
+                    `scouting_${eventKey}_${team}_round_${i}`
                 );
-
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-
-                a.href = url;
-                a.download = params.event + ".json";
-                a.click();
-
-                URL.revokeObjectURL(url);
             }
 
-            function importScoutingData(event) {
-                const file = event.target.files[0];
+            overwrittenCount++;
+        }
 
-                if (!file) return;
+        Object.keys(teamData.rounds).forEach(round => {
+            const key =
+                `scouting_${eventKey}_${team}_round_${round}`;
 
-                const reader = new FileReader();
-
-                reader.onload = function(e) {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        let count = 0;
-
-                        for (const key in data) {
-                            localStorage.setItem(
-                                key,
-                                JSON.stringify(data[key])
-                            );
-                            count++;
-                        }
-
-                        alert(`Imported ${count} scouting records.`);
-
-                        const params = getParams();
-
-                        if (params.event && params.team) {
-                            loadRound(params.event, params.team);
-                        }
-
-                    } catch {
-                        alert("Invalid scouting file.");
-                    }
-                };
-
-                reader.readAsText(file);
-                event.target.value = "";
-            }
-
-            function readImportFile(event) {
-                const file = event.target.files[0];
-
-                if (!file) return;
-
-                const reader = new FileReader();
-
-                reader.onload = function(e) {
-                    try {
-                        importedData = JSON.parse(e.target.result);
-                        buildTeamList();
-                    } catch {
-                        alert("Invalid scouting file.");
-                    }
-                };
-
-                reader.readAsText(file);
-            }
-
-            function buildTeamList() {
-                selectedTeams.clear();
-
-                const div = document.getElementById("teamList");
-                div.innerHTML = "";
-
-                const eventKey = importedData.event;
-
-                Object.keys(importedData.teams)
-                    .sort((a, b) => Number(a) - Number(b))
-                    .forEach(team => {
-                        let exists = false;
-
-                        for (let i = 1; i <= 20; i++) {
-                            if (localStorage.getItem(
-                                    `scouting_${eventKey}_${team}_round_${i}`
-                                )) {
-                                exists = true;
-                                break;
-                            }
-                        }
-
-                        const row = document.createElement("div");
-                        row.className = "teamEntry";
-
-                        row.innerHTML = `
-                        <label>
-                            <input type="checkbox" value="${team}">
-                            Team ${team}
-                        </label>
-
-                        ${exists
-                            ? '<span class="teamExists">Already Exists</span>'
-                            : ""}
-                    `;
-
-                        div.appendChild(row);
-                    });
-
-                document.getElementById("importDialog").style.display = "block";
-
-                hookSearch();
-                hookCheckboxes();
-            }
-
-            function hookCheckboxes() {
-                document.querySelectorAll("#teamList input").forEach(box => {
-                    box.onchange = function() {
-                        if (this.checked) {
-                            selectedTeams.add(this.value);
-                        } else {
-                            selectedTeams.delete(this.value);
-                        }
-                    };
-                });
-            }
-
-            function hookSearch() {
-                const search = document.getElementById("teamSearch");
-
-                search.oninput = function() {
-                    const value = this.value.toLowerCase();
-
-                    document.querySelectorAll("#teamList .teamEntry").forEach(row => {
-                        row.style.display = row.innerText.toLowerCase().includes(value) ?
-                            "flex" :
-                            "none";
-                    });
-                };
-            }
-
-            function selectAllTeams() {
-                document.querySelectorAll("#teamList input").forEach(c => {
-                    c.checked = true;
-                    selectedTeams.add(c.value);
-                });
-            }
-
-            function clearAllTeams() {
-                document.querySelectorAll("#teamList input").forEach(c => {
-                    c.checked = false;
-                });
-
-                selectedTeams.clear();
-            }
-
-            function closeImportDialog() {
-                document.getElementById("importDialog").style.display = "none";
-            }
-
-            function finishImport() {
-                if (!importedData) {
-                    alert("No file loaded.");
-                    return;
-                }
-
-                if (selectedTeams.size === 0) {
-                    alert("No teams selected.");
-                    return;
-                }
-
-                const eventKey = importedData.event;
-
-                let importedCount = 0;
-                let overwrittenCount = 0;
-
-                selectedTeams.forEach(team => {
-                    const teamData = importedData.teams[team];
-
-                    if (!teamData) return;
-
-                    let exists = false;
-
-                    for (let i = 1; i <= 20; i++) {
-                        if (localStorage.getItem(
-                                `scouting_${eventKey}_${team}_round_${i}`
-                            )) {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (exists) {
-                        const ok = confirm(
-                            `Team ${team} already exists.\nOverwrite its scouting data?`
-                        );
-
-                        if (!ok) return;
-
-                        for (let i = 1; i <= 20; i++) {
-                            localStorage.removeItem(
-                                `scouting_${eventKey}_${team}_round_${i}`
-                            );
-                        }
-
-                        overwrittenCount++;
-                    }
-
-                    Object.keys(teamData.rounds).forEach(round => {
-                        const key =
-                            `scouting_${eventKey}_${team}_round_${round}`;
-
-                        localStorage.setItem(
-                            key,
-                            JSON.stringify(teamData.rounds[round])
-                        );
-                    });
-
-                    importedCount++;
-                });
-
-                closeImportDialog();
-
-                alert(
-                    `Imported ${importedCount} team(s).\n` +
-                    `Overwritten ${overwrittenCount} team(s).`
-                );
-
-                const params = getParams();
-
-                if (params.event === eventKey && params.team) {
-                    loadRound(eventKey, params.team);
-                }
-            }
-
-            function triggerImport() {
-                const input = document.getElementById("importFile");
-
-                input.value = "";
-                input.click();
-            }
-
-
-            async function logout() {
-                try {
-                    const response = await fetch('/api/logout', {
-                        method: 'POST',
-                        credentials: 'same-origin'
-                    });
-
-                    if (response.status === 204) {
-                        return;
-                    }
-
-                    if (!response.ok) {
-                        alert('Logout failed. Please try again.');
-                        return;
-                    }
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                        window.location.href = '/securitytest';
-                    }
-                } catch (error) {
-                    console.error('Logout failed:', error);
-                    alert('Unable to log out. Please try again.');
-                }
-            }
-        </script>
-
-        <div id="importDialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
-
-            <div style="
-            background:white;
-            width:500px;
-            max-width:90%;
-            max-height:80vh;
-            overflow:auto;
-            margin:40px auto;
-            padding:20px;
-            border-radius:10px;
-        ">
-
-                <h2>Import Scouting Data</h2>
-
-                <p>Select the teams to import.</p>
-
-                <input id="teamSearch" placeholder="Search team..." style="width:100%;padding:8px;margin-bottom:10px;">
-
-                <div style="margin-bottom:10px;">
-                    <button onclick="selectAllTeams()">Select All</button>
-                    <button onclick="clearAllTeams()">Clear</button>
-                </div>
-
-                <div id="teamList" style="
-                    border:1px solid #ccc;
-                    padding:10px;
-                    max-height:350px;
-                    overflow:auto;
-                ">
-                </div>
-
-                <br>
-
-                <button onclick="finishImport()">Import Selected</button>
-                <button onclick="closeImportDialog()">Cancel</button>
-
-            </div>
-        </div>
+            localStorage.setItem(
+                key,
+                JSON.stringify(teamData.rounds[round])
+            );
+        });
 
+        importedCount++;
+    });
+
+    closeImportDialog();
+
+    alert(
+        `Imported ${importedCount} team(s).\n` +
+        `Overwritten ${overwrittenCount} team(s).`
+    );
+
+    const params = getParams();
+
+    if (params.event === eventKey && params.team) {
+        loadRound(eventKey, params.team);
+    }
+}
+
+
+function triggerImport() {
+    const input = document.getElementById("importFile");
+
+    input.value = "";
+    input.click();
+}
+
+
+// LOGOUT
+
+async function logout() {
+    try {
+        const response = await fetch("/api/logout", {
+            method: "POST",
+            credentials: "same-origin"
+        });
+
+        if (response.status === 204) {
+            window.location.href = "/securitytest";
+            return;
+        }
+
+        if (!response.ok) {
+            alert("Logout failed. Please try again.");
+            return;
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            window.location.href = "/securitytest";
+        } else {
+            alert("Logout failed. Please try again.");
+        }
+
+    } catch (error) {
+        console.error("Logout failed:", error);
+        alert("Unable to log out. Please try again.");
+    }
+}
+
+</script>
 </body>
-
 </html>
