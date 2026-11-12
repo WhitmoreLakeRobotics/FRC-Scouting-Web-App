@@ -101,153 +101,255 @@
 
     <div class="container">
 
-<button class="logout" type="button" onclick="logout()">
-    Logout
-</button>
+        <button class="logout" type="button" onclick="logout()">
+            Logout
+        </button>
 
         <div class="card">
             <h1>FRC Event Analyzer</h1>
 
-            <p>Enter an event key:</p>
 
-            <input id="eventKey" placeholder="2025miket">
+            <p>Select an event:</p>
+
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+
+                <div>
+                    <label for="yearSelect">Year:</label><br>
+                    <select id="yearSelect" onchange="loadEvents()" style="padding:10px;width:180px;">
+                    </select>
+                </div>
+
+                <div>
+                    <label for="eventSelect">Event:</label><br>
+                    <select id="eventSelect" style="padding:10px;width:320px;" disabled>
+                        <option value="">Select a year first</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <br>
+
             <button onclick="analyzeEvent()">Analyze Event</button>
 
             <p id="status"></p>
+
+
+            <div class="card">
+                <h2>All Teams:</h2>
+                <div id="results"></div>
+            </div>
+
+            <button onclick="exportScoutingData()">
+                Export Event
+            </button>
+
+            <button onclick="triggerImport()">
+                Import Event
+            </button>
+
+            <input id="importFile" type="file" accept=".json" hidden onchange="readImportFile(event)">
         </div>
 
-        <div class="card">
-            <h2>All Teams:</h2>
-            <div id="results"></div>
-        </div>
+        <script>
+            let importedData = null;
+            let selectedTeams = new Set();
 
-        <button onclick="exportScoutingData()">
-            Export Event
-        </button>
+            function getParams() {
+                const p = new URLSearchParams(window.location.search);
 
-        <button onclick="triggerImport()">
-            Import Event
-        </button>
+                return {
+                    event: p.get("event"),
+                    team: p.get("team")
+                };
+            }
 
-        <input
-            id="importFile"
-            type="file"
-            accept=".json"
-            hidden
-            onchange="readImportFile(event)">
-    </div>
+            function openTeam(eventKey, teamNumber) {
+                window.open(`?event=${eventKey}&team=${teamNumber}`, "_blank");
+            }
 
-    <script>
-        let importedData = null;
-        let selectedTeams = new Set();
+            const TBA_KEY = "kjYvgurAPpTKfVOXRauXV5z4VjnyZ5wpv6t8GjIj51x3yjCrUxZUisXQ4MJpOFtJ";
+            const BASE_URL = "https://www.thebluealliance.com/api/v3";
 
-        function getParams() {
-            const p = new URLSearchParams(window.location.search);
 
-            return {
-                event: p.get("event"),
-                team: p.get("team")
-            };
-        }
 
-        function openTeam(eventKey, teamNumber) {
-            window.open(`?event=${eventKey}&team=${teamNumber}`, "_blank");
-        }
+            async function tba(path) {
+                const response = await fetch(BASE_URL + path, {
+                    headers: {
+                        "X-TBA-Auth-Key": TBA_KEY
+                    }
+                });
 
-        const TBA_KEY = "kjYvgurAPpTKfVOXRauXV5z4VjnyZ5wpv6t8GjIj51x3yjCrUxZUisXQ4MJpOFtJ";
-        const BASE_URL = "https://www.thebluealliance.com/api/v3";
+                if (!response.ok) {
+                    const errorText = await response.text();
 
-        async function tba(path) {
-            const response = await fetch(BASE_URL + path, {
-                headers: {
-                    "X-TBA-Auth-Key": TBA_KEY
+                    throw new Error(
+                        `TBA Error ${response.status}: ${path} - ${errorText}`
+                    );
                 }
-            });
 
-            if (!response.ok) {
-                throw new Error("TBA API Error");
+                return response.json();
             }
 
-            return response.json();
-        }
 
-        function calculateScore(team) {
-            return (
-                team.opr * 0.45 +
-                team.ccwm * 0.35 +
-                team.winPct * 0.20
-            );
-        }
 
-        function generateSummary(team) {
-            const strengths = [];
+            async function loadEvents() {
+                const year = document.getElementById("yearSelect").value;
+                const eventSelect = document.getElementById("eventSelect");
+                const status = document.getElementById("status");
 
-            if (team.opr > 40) {
-                strengths.push("Elite offensive output");
-            }
+                eventSelect.innerHTML =
+                    '<option value="">Loading events...</option>';
 
-            if (team.ccwm > 15) {
-                strengths.push("Strong winning impact");
-            }
+                eventSelect.disabled = true;
 
-            if (team.winPct > 0.70) {
-                strengths.push("Consistent match results");
-            }
-
-            if (strengths.length === 0) {
-                strengths.push("Developing performance profile");
-            }
-
-            return strengths.join(", ");
-        }
-
-        async function loadTeamPage(eventKey, teamNumber) {
-            const status = document.getElementById("status");
-            const results = document.getElementById("results");
-
-            status.innerText = "Loading team...";
-
-            try {
-                const [teams, rankings, oprs] = await Promise.all([
-                    tba(`/event/${eventKey}/teams/simple`),
-                    tba(`/event/${eventKey}/rankings`),
-                    tba(`/event/${eventKey}/oprs`)
-                ]);
-
-                const team = teams.find(
-                    t => String(t.team_number) === String(teamNumber)
-                );
-
-                if (!team) {
-                    results.innerHTML = "<h2>Team not found.</h2>";
+                if (!year) {
+                    eventSelect.innerHTML =
+                        '<option value="">Select a year first</option>';
                     return;
                 }
 
-                const rankData = rankings.rankings.find(
-                    r => r.team_key === team.key
+                status.innerText = "Loading all FRC events...";
+
+                try {
+                    const events = await tba(`/events/${year}`);
+
+                    events.sort((a, b) =>
+                        a.start_date.localeCompare(b.start_date)
+                    );
+
+                    eventSelect.innerHTML =
+                        '<option value="">Select an event</option>';
+
+                    events.forEach(event => {
+                        const option = document.createElement("option");
+
+                        option.value = event.key;
+
+                        option.textContent =
+                            `${event.name} - ${event.city}, ${event.state_prov || event.country}`;
+
+                        eventSelect.appendChild(option);
+                    });
+
+                    eventSelect.disabled = false;
+
+                    status.innerText =
+                        `Found ${events.length} FRC events worldwide for ${year}.`;
+
+                } catch (error) {
+                    console.error(error);
+
+                    eventSelect.innerHTML =
+                        '<option value="">Failed to load events</option>';
+
+                    status.innerText = "Could not load events from The Blue Alliance.";
+                }
+            }
+
+            function loadYears() {
+                const yearSelect = document.getElementById("yearSelect");
+
+                const currentYear = new Date().getFullYear();
+
+                yearSelect.innerHTML =
+                    '<option value="">Select Year</option>';
+
+                for (let year = currentYear - 5; year <= currentYear + 5; year++) {
+                    const option = document.createElement("option");
+
+                    option.value = year;
+                    option.textContent = year;
+
+                    yearSelect.appendChild(option);
+                }
+
+                yearSelect.value = currentYear;
+
+                loadEvents();
+            }
+
+            window.addEventListener("DOMContentLoaded", loadYears);
+
+
+
+            function calculateScore(team) {
+                return (
+                    team.opr * 0.45 +
+                    team.ccwm * 0.35 +
+                    team.winPct * 0.20
                 );
+            }
 
-                const wins = rankData?.record?.wins || 0;
-                const losses = rankData?.record?.losses || 0;
+            function generateSummary(team) {
+                const strengths = [];
 
-                const winPct = wins + losses > 0
-                    ? wins / (wins + losses)
-                    : 0;
+                if (team.opr > 40) {
+                    strengths.push("Elite offensive output");
+                }
 
-                const analyzed = {
-                    teamNumber: team.team_number,
-                    nickname: team.nickname || "",
-                    opr: oprs.oprs?.[team.key] || 0,
-                    ccwm: oprs.ccwms?.[team.key] || 0,
-                    rank: rankData?.rank || 999,
-                    wins,
-                    losses,
-                    winPct
-                };
+                if (team.ccwm > 15) {
+                    strengths.push("Strong winning impact");
+                }
 
-                analyzed.score = calculateScore(analyzed);
+                if (team.winPct > 0.70) {
+                    strengths.push("Consistent match results");
+                }
 
-                results.innerHTML = `
+                if (strengths.length === 0) {
+                    strengths.push("Developing performance profile");
+                }
+
+                return strengths.join(", ");
+            }
+
+            async function loadTeamPage(eventKey, teamNumber) {
+                    const status = document.getElementById("status");
+                    const results = document.getElementById("results");
+
+                    status.innerText = "Loading team...";
+
+                    try {
+                        const [teams, rankings, oprs] = await Promise.all([
+                            tba(`/event/${eventKey}/teams/simple`),
+                            tba(`/event/${eventKey}/rankings`),
+                            tba(`/event/${eventKey}/oprs`)
+                        ]);
+
+                        const team = teams.find(
+                            t => String(t.team_number) === String(teamNumber)
+                        );
+
+                        if (!team) {
+                            results.innerHTML = "<h2>Team not found.</h2>";
+                            return;
+                        }
+
+                        const rankData = rankings.rankings.find(
+                            r => r.team_key === team.key
+                        );
+
+                        const wins = rankData?.record?.wins || 0;
+                        const losses = rankData?.record?.losses || 0;
+
+                        const winPct = wins + losses > 0 ?
+                            wins / (wins + losses) :
+                            0;
+
+                        const analyzed = {
+                            teamNumber: team.team_number,
+                            nickname: team.nickname || "",
+                            opr: oprs.oprs?.[team.key] || 0,
+                            ccwm: oprs.ccwms?.[team.key] || 0,
+                            rank: rankData?.rank || 999,
+                            wins,
+                            losses,
+                            winPct
+                        };
+
+                        analyzed.score = calculateScore(analyzed);
+
+                        results.innerHTML = `
                     <h2>
                         Team ${analyzed.teamNumber}
                         - ${analyzed.nickname}
@@ -258,73 +360,116 @@
                             match:
                             <select id="roundSelector">
                                 ${Array.from({ length: 20 }, (_, i) =>
-                                    `<option value="${i + 1}">match ${i + 1}</option>`
-                                ).join("")}
-                            </select>
-                        </label>
-                    </div>
+                                    ` < option value = "${i + 1}" > match $ {
+                            i + 1
+                        } < /option>`
+                    ).join("")
+                } <
+                /select> < /
+            label > <
+                /div>
 
-                    <div class="summary">
-                        <p>
-                            <strong>Overall Score:</strong>
-                            ${analyzed.score.toFixed(2)}
-                        </p>
+                <
+                div class = "summary" >
+                <
+                p >
+                <
+                strong > Overall Score: < /strong>
+            $ {
+                analyzed.score.toFixed(2)
+            } <
+            /p>
 
-                        <p>
-                            <strong>Official Rank:</strong>
-                            ${analyzed.rank}
-                        </p>
+            <
+            p >
+                <
+                strong > Official Rank: < /strong>
+            $ {
+                analyzed.rank
+            } <
+            /p>
 
-                        <p>
-                            <strong>Record:</strong>
-                            ${analyzed.wins}-${analyzed.losses}
-                        </p>
+            <
+            p >
+                <
+                strong > Record: < /strong>
+            $ {
+                analyzed.wins
+            } - $ {
+                analyzed.losses
+            } <
+            /p>
 
-                        <p>
-                            <strong>OPR:</strong>
-                            ${analyzed.opr.toFixed(2)}
-                        </p>
+            <
+            p >
+                <
+                strong > OPR: < /strong>
+            $ {
+                analyzed.opr.toFixed(2)
+            } <
+            /p>
 
-                        <p>
-                            <strong>CCWM:</strong>
-                            ${analyzed.ccwm.toFixed(2)}
-                        </p>
+            <
+            p >
+                <
+                strong > CCWM: < /strong>
+            $ {
+                analyzed.ccwm.toFixed(2)
+            } <
+            /p>
 
-                        <div>
-                            <label style="display:flex;align-items:center;gap:4px;margin:2px 0;">
-                                <span>Kitbot?</span>
-                                <input type="checkbox" id="kitbot">
-                            </label>
+            <
+            div >
+                <
+                label style = "display:flex;align-items:center;gap:4px;margin:2px 0;" >
+                <
+                span > Kitbot ? < /span> <
+            input type = "checkbox"
+            id = "kitbot" >
+                <
+                /label>
 
-                            <label style="display:flex;align-items:center;gap:4px;margin:2px 0;">
-                                <span>Stuck on Fuel?</span>
-                                <input type="checkbox" id="fuel">
-                            </label>
+                <
+                label style = "display:flex;align-items:center;gap:4px;margin:2px 0;" >
+                <
+                span > Stuck on Fuel ? < /span> <
+            input type = "checkbox"
+            id = "fuel" >
+                <
+                /label>
 
-                            <label style="display:flex;align-items:center;gap:4px;margin:2px 0;">
-                                <span>Alive whole match?</span>
-                                <input type="checkbox" id="alive">
-                            </label>
-                        </div>
+                <
+                label style = "display:flex;align-items:center;gap:4px;margin:2px 0;" >
+                <
+                span > Alive whole match ? < /span> <
+            input type = "checkbox"
+            id = "alive" >
+                <
+                /label> < /
+            div >
 
-                        <div>
-                            <strong>Scouting Notes:</strong>
-                            <br>
+                <
+                div >
+                <
+                strong > Scouting Notes: < /strong> <
+            br >
 
-                            <textarea
-                                id="notes"
-                                style="
-                                    width:100%;
-                                    min-height:150px;
-                                    margin-top:5px;
-                                    padding:8px;
-                                    resize:vertical;
-                                "
-                                placeholder="Enter scouting notes here..."
-                            ></textarea>
-                        </div>
-                    </div>
-                `;
+                <
+                textarea
+            id = "notes"
+            style = "
+            width: 100 % ;
+            min - height: 150 px;
+            margin - top: 5 px;
+            padding: 8 px;
+            resize: vertical;
+            "
+            placeholder = "Enter scouting notes here..." >
+                <
+                /textarea> < /
+            div > <
+                /div>
+            `;
 
                 const roundSelector = document.getElementById("roundSelector");
 
@@ -354,7 +499,11 @@
                     () => saveRound(eventKey, teamNumber)
                 );
 
-                status.innerText = `Viewing Team ${teamNumber}`;
+                status.innerText = `
+            Viewing Team $ {
+                teamNumber
+            }
+            `;
 
             } catch (error) {
                 console.error(error);
@@ -362,297 +511,351 @@
             }
         }
 
-        async function analyzeEvent() {
-            const eventKey = document.getElementById("eventKey").value.trim();
-            const status = document.getElementById("status");
-            const results = document.getElementById("results");
+        
+async function analyzeEvent() {
+    const eventKey = document.getElementById("eventSelect").value;
+    const status = document.getElementById("status");
+    const results = document.getElementById("results");
 
-            results.innerHTML = "";
-            status.innerText = "Loading...";
+    if (!eventKey) {
+        status.innerText = "Please select an event first.";
+        return;
+    }
 
-            try {
-                const [teams, rankings, oprs] = await Promise.all([
-                    tba(`/event/${eventKey}/teams/simple`),
-                    tba(`/event/${eventKey}/rankings`),
-                    tba(`/event/${eventKey}/oprs`)
-                ]);
+    results.innerHTML = "";
+    status.innerText = "Loading event...";
 
-                const rankingMap = {};
+    try {
+        // Teams are required.
+        const teams = await tba(
+            ` / event / $ {
+                eventKey
+            }
+            /teams/simple
+            `
+        );
 
+        // Rankings and OPR may not be available yet.
+        const [rankingsResult, oprsResult] = await Promise.allSettled([
+            tba(` / event / $ {
+                eventKey
+            }
+            /rankings`),
+            tba(`/event/${eventKey}/oprs`)
+            ]);
+
+            const rankings = rankingsResult.status === "fulfilled" ?
+                rankingsResult.value :
+                null;
+
+            const oprs = oprsResult.status === "fulfilled" ?
+                oprsResult.value :
+                null;
+
+            if (!teams || !Array.isArray(teams)) {
+                throw new Error("Invalid team data returned by TBA.");
+            }
+
+            const rankingMap = {};
+
+            if (Array.isArray(rankings?.rankings)) {
                 rankings.rankings.forEach(r => {
                     rankingMap[r.team_key] = r;
                 });
+            }
 
-                const analyzedTeams = teams.map(team => {
-                    const rankData = rankingMap[team.key];
+            const analyzedTeams = teams.map(team => {
+                const rankData = rankingMap[team.key];
 
-                    const wins = rankData?.record?.wins || 0;
-                    const losses = rankData?.record?.losses || 0;
+                const wins = rankData?.record?.wins || 0;
+                const losses = rankData?.record?.losses || 0;
 
-                    const winPct = wins + losses > 0
-                        ? wins / (wins + losses)
-                        : 0;
+                const winPct = wins + losses > 0 ?
+                    wins / (wins + losses) :
+                    0;
 
-                    const analyzed = {
-                        teamNumber: team.team_number,
-                        nickname: team.nickname || "",
-                        teamKey: team.key,
-                        opr: oprs.oprs?.[team.key] || 0,
-                        ccwm: oprs.ccwms?.[team.key] || 0,
-                        dpr: oprs.dprs?.[team.key] || 0,
-                        rank: rankData?.rank || 999,
-                        wins,
-                        losses,
-                        winPct
-                    };
+                const analyzed = {
+                    teamNumber: team.team_number,
+                    nickname: team.nickname || "",
+                    teamKey: team.key,
+                    opr: oprs?.oprs?.[team.key] || 0,
+                    ccwm: oprs?.ccwms?.[team.key] || 0,
+                    dpr: oprs?.dprs?.[team.key] || 0,
+                    rank: rankData?.rank || 999,
+                    wins,
+                    losses,
+                    winPct
+                };
 
-                    analyzed.score = calculateScore(analyzed);
+                analyzed.score = calculateScore(analyzed);
 
-                    return analyzed;
-                });
+                return analyzed;
+            });
 
-                analyzedTeams.sort((a, b) => b.score - a.score);
+            analyzedTeams.sort((a, b) => b.score - a.score);
 
-                const NoOverflow = analyzedTeams.slice(0, 9999);
+            let html = `
+            <h3>Event: ${eventKey}</h3>
 
-                let html = `
-                    <h3>Event: ${eventKey}</h3>
+            ${!rankings ? "<p>Rankings are not available yet.</p>" : ""}
+            ${!oprs ? "<p>OPR statistics are not available yet.</p>" : ""}
 
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Team</th>
-                                <th>Official Rank</th>
-                                <th>Record</th>
-                                <th>OPR</th>
-                                <th>CCWM</th>
-                                <th>Score</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Team</th>
+                        <th>Official Rank</th>
+                        <th>Record</th>
+                        <th>OPR</th>
+                        <th>CCWM</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
 
-                NoOverflow.forEach((team, index) => {
-                    let cls = "";
+            analyzedTeams.forEach((team, index) => {
+                let cls = "";
 
-                    if (index === 0) cls = "rank1";
-                    if (index === 1) cls = "rank2";
-                    if (index === 2) cls = "rank3";
-
-                    html += `
-                        <tr class="${cls}">
-                            <td>${index + 1}</td>
-                            <td>
-                                <a href="#"
-                                   onclick="openTeam('${eventKey}','${team.teamNumber}'); return false;">
-                                    ${team.teamNumber} - ${team.nickname}
-                                </a>
-                            </td>
-                            <td>${team.rank}</td>
-                            <td>${team.wins}-${team.losses}</td>
-                            <td>${team.opr.toFixed(2)}</td>
-                            <td>${team.ccwm.toFixed(2)}</td>
-                            <td>${team.score.toFixed(2)}</td>
-                        </tr>
-                    `;
-                });
+                if (index === 0) cls = "rank1";
+                if (index === 1) cls = "rank2";
+                if (index === 2) cls = "rank3";
 
                 html += `
-                        </tbody>
-                    </table>
-                `;
+                <tr class="${cls}">
+                    <td>${index + 1}</td>
+                    <td>
+                        <a href="#"
+                           onclick="openTeam('${eventKey}','${team.teamNumber}'); return false;">
+                            ${team.teamNumber} - ${team.nickname}
+                        </a>
+                    </td>
+                    <td>${team.rank === 999 ? "N/A" : team.rank}</td>
+                    <td>${team.wins}-${team.losses}</td>
+                    <td>${team.opr.toFixed(2)}</td>
+                    <td>${team.ccwm.toFixed(2)}</td>
+                    <td>${team.score.toFixed(2)}</td>
+                </tr>
+            `;
+            });
 
-                results.innerHTML = html;
-                status.innerText = `Analyzed ${teams.length} teams`;
+            html += `
+                </tbody>
+            </table>
+        `;
 
-            } catch (error) {
-                console.error(error);
-                status.innerText =
-                    "Error loading event. Check event key and API key.";
+            results.innerHTML = html;
+
+            status.innerText =
+                `Analyzed ${teams.length} teams at ${eventKey}`;
+
             }
-        }
+            catch (error) {
+                console.error("Event analysis failed:", error);
 
-        function scoutingKey(eventKey, teamNumber, round) {
-            return `scouting_${eventKey}_${teamNumber}_round_${round}`;
-        }
+                status.innerText = error.message;
+            }
+            }
 
-        function saveRound(eventKey, teamNumber) {
-            const match = document.getElementById("roundSelector").value;
 
-            const data = {
-                kitbot: document.getElementById("kitbot").checked,
-                fuel: document.getElementById("fuel").checked,
-                alive: document.getElementById("alive").checked,
-                notes: document.getElementById("notes").value
-            };
+            function scoutingKey(eventKey, teamNumber, round) {
+                return `scouting_${eventKey}_${teamNumber}_round_${round}`;
+            }
 
-            localStorage.setItem(
-                scoutingKey(eventKey, teamNumber, match),
-                JSON.stringify(data)
-            );
-        }
+            function saveRound(eventKey, teamNumber) {
+                const match = document.getElementById("roundSelector").value;
 
-        function loadRound(eventKey, teamNumber) {
-            const match = document.getElementById("roundSelector").value;
+                const data = {
+                    kitbot: document.getElementById("kitbot").checked,
+                    fuel: document.getElementById("fuel").checked,
+                    alive: document.getElementById("alive").checked,
+                    notes: document.getElementById("notes").value
+                };
 
-            const data = JSON.parse(
-                localStorage.getItem(
-                    scoutingKey(eventKey, teamNumber, match)
-                )
-            ) || {};
+                localStorage.setItem(
+                    scoutingKey(eventKey, teamNumber, match),
+                    JSON.stringify(data)
+                );
+            }
 
-            document.getElementById("kitbot").checked = data.kitbot || false;
-            document.getElementById("fuel").checked = data.fuel || false;
-            document.getElementById("alive").checked = data.alive || false;
-            document.getElementById("notes").value = data.notes || "";
-        }
+            function loadRound(eventKey, teamNumber) {
+                const match = document.getElementById("roundSelector").value;
 
-        window.addEventListener("load", () => {
-            const params = getParams();
+                const data = JSON.parse(
+                    localStorage.getItem(
+                        scoutingKey(eventKey, teamNumber, match)
+                    )
+                ) || {};
 
-            if (params.event && params.team) {
-                document.getElementById("eventKey").value = params.event;
-                loadTeamPage(params.event, params.team);
+                document.getElementById("kitbot").checked = data.kitbot || false;
+                document.getElementById("fuel").checked = data.fuel || false;
+                document.getElementById("alive").checked = data.alive || false;
+                document.getElementById("notes").value = data.notes || "";
+            }
 
-            } else if (params.event) {
-                document.getElementById("eventKey").value = params.event;
+
+            window.addEventListener("load", async () => {
+                const params = getParams();
+
+                if (params.event && params.team) {
+                    loadTeamPage(params.event, params.team);
+
+                } else if (params.event) {
+                    analyzeEventFromURL(params.event);
+
+                }
+            });
+
+            async function analyzeEventFromURL(eventKey) {
+                // Preserve compatibility with existing event links.
+                const event = await tba(`/event/${eventKey}`);
+
+                document.getElementById("yearSelect").value =
+                    event.year;
+
+                await loadEvents();
+
+                document.getElementById("eventSelect").value =
+                    eventKey;
+
                 analyzeEvent();
             }
-        });
 
-        function exportScoutingData() {
-            const params = getParams();
 
-            if (!params.event) {
-                alert("Open an event first.");
-                return;
-            }
+            function exportScoutingData() {
+                const params = getParams();
 
-            const exportData = {
-                event: params.event,
-                teams: {}
-            };
-
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-
-                if (!key.startsWith("scouting_")) continue;
-
-                const parts = key.split("_");
-                const eventKey = parts[1];
-                const team = parts[2];
-                const round = parts[4];
-
-                if (eventKey !== params.event) continue;
-
-                if (!exportData.teams[team]) {
-                    exportData.teams[team] = {
-                        rounds: {}
-                    };
+                if (!params.event) {
+                    alert("Open an event first.");
+                    return;
                 }
 
-                exportData.teams[team].rounds[round] =
-                    JSON.parse(localStorage.getItem(key));
-            }
+                const exportData = {
+                    event: params.event,
+                    teams: {}
+                };
 
-            const blob = new Blob(
-                [JSON.stringify(exportData, null, 2)],
-                { type: "application/json" }
-            );
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
 
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
+                    if (!key.startsWith("scouting_")) continue;
 
-            a.href = url;
-            a.download = params.event + ".json";
-            a.click();
+                    const parts = key.split("_");
+                    const eventKey = parts[1];
+                    const team = parts[2];
+                    const round = parts[4];
 
-            URL.revokeObjectURL(url);
-        }
+                    if (eventKey !== params.event) continue;
 
-        function importScoutingData(event) {
-            const file = event.target.files[0];
-
-            if (!file) return;
-
-            const reader = new FileReader();
-
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    let count = 0;
-
-                    for (const key in data) {
-                        localStorage.setItem(
-                            key,
-                            JSON.stringify(data[key])
-                        );
-                        count++;
+                    if (!exportData.teams[team]) {
+                        exportData.teams[team] = {
+                            rounds: {}
+                        };
                     }
 
-                    alert(`Imported ${count} scouting records.`);
+                    exportData.teams[team].rounds[round] =
+                        JSON.parse(localStorage.getItem(key));
+                }
 
-                    const params = getParams();
-
-                    if (params.event && params.team) {
-                        loadRound(params.event, params.team);
+                const blob = new Blob(
+                    [JSON.stringify(exportData, null, 2)], {
+                        type: "application/json"
                     }
+                );
 
-                } catch {
-                    alert("Invalid scouting file.");
-                }
-            };
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
 
-            reader.readAsText(file);
-            event.target.value = "";
-        }
+                a.href = url;
+                a.download = params.event + ".json";
+                a.click();
 
-        function readImportFile(event) {
-            const file = event.target.files[0];
+                URL.revokeObjectURL(url);
+            }
 
-            if (!file) return;
+            function importScoutingData(event) {
+                const file = event.target.files[0];
 
-            const reader = new FileReader();
+                if (!file) return;
 
-            reader.onload = function(e) {
-                try {
-                    importedData = JSON.parse(e.target.result);
-                    buildTeamList();
-                } catch {
-                    alert("Invalid scouting file.");
-                }
-            };
+                const reader = new FileReader();
 
-            reader.readAsText(file);
-        }
+                reader.onload = function(e) {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        let count = 0;
 
-        function buildTeamList() {
-            selectedTeams.clear();
-
-            const div = document.getElementById("teamList");
-            div.innerHTML = "";
-
-            const eventKey = importedData.event;
-
-            Object.keys(importedData.teams)
-                .sort((a, b) => Number(a) - Number(b))
-                .forEach(team => {
-                    let exists = false;
-
-                    for (let i = 1; i <= 20; i++) {
-                        if (localStorage.getItem(
-                            `scouting_${eventKey}_${team}_round_${i}`
-                        )) {
-                            exists = true;
-                            break;
+                        for (const key in data) {
+                            localStorage.setItem(
+                                key,
+                                JSON.stringify(data[key])
+                            );
+                            count++;
                         }
+
+                        alert(`Imported ${count} scouting records.`);
+
+                        const params = getParams();
+
+                        if (params.event && params.team) {
+                            loadRound(params.event, params.team);
+                        }
+
+                    } catch {
+                        alert("Invalid scouting file.");
                     }
+                };
 
-                    const row = document.createElement("div");
-                    row.className = "teamEntry";
+                reader.readAsText(file);
+                event.target.value = "";
+            }
 
-                    row.innerHTML = `
+            function readImportFile(event) {
+                const file = event.target.files[0];
+
+                if (!file) return;
+
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    try {
+                        importedData = JSON.parse(e.target.result);
+                        buildTeamList();
+                    } catch {
+                        alert("Invalid scouting file.");
+                    }
+                };
+
+                reader.readAsText(file);
+            }
+
+            function buildTeamList() {
+                selectedTeams.clear();
+
+                const div = document.getElementById("teamList");
+                div.innerHTML = "";
+
+                const eventKey = importedData.event;
+
+                Object.keys(importedData.teams)
+                    .sort((a, b) => Number(a) - Number(b))
+                    .forEach(team => {
+                        let exists = false;
+
+                        for (let i = 1; i <= 20; i++) {
+                            if (localStorage.getItem(
+                                    `scouting_${eventKey}_${team}_round_${i}`
+                                )) {
+                                exists = true;
+                                break;
+                            }
+                        }
+
+                        const row = document.createElement("div");
+                        row.className = "teamEntry";
+
+                        row.innerHTML = `
                         <label>
                             <input type="checkbox" value="${team}">
                             Team ${team}
@@ -663,176 +866,174 @@
                             : ""}
                     `;
 
-                    div.appendChild(row);
+                        div.appendChild(row);
+                    });
+
+                document.getElementById("importDialog").style.display = "block";
+
+                hookSearch();
+                hookCheckboxes();
+            }
+
+            function hookCheckboxes() {
+                document.querySelectorAll("#teamList input").forEach(box => {
+                    box.onchange = function() {
+                        if (this.checked) {
+                            selectedTeams.add(this.value);
+                        } else {
+                            selectedTeams.delete(this.value);
+                        }
+                    };
                 });
+            }
 
-            document.getElementById("importDialog").style.display = "block";
+            function hookSearch() {
+                const search = document.getElementById("teamSearch");
 
-            hookSearch();
-            hookCheckboxes();
-        }
+                search.oninput = function() {
+                    const value = this.value.toLowerCase();
 
-        function hookCheckboxes() {
-            document.querySelectorAll("#teamList input").forEach(box => {
-                box.onchange = function() {
-                    if (this.checked) {
-                        selectedTeams.add(this.value);
-                    } else {
-                        selectedTeams.delete(this.value);
-                    }
+                    document.querySelectorAll("#teamList .teamEntry").forEach(row => {
+                        row.style.display = row.innerText.toLowerCase().includes(value) ?
+                            "flex" :
+                            "none";
+                    });
                 };
-            });
-        }
+            }
 
-        function hookSearch() {
-            const search = document.getElementById("teamSearch");
-
-            search.oninput = function() {
-                const value = this.value.toLowerCase();
-
-                document.querySelectorAll("#teamList .teamEntry").forEach(row => {
-                    row.style.display = row.innerText.toLowerCase().includes(value)
-                        ? "flex"
-                        : "none";
+            function selectAllTeams() {
+                document.querySelectorAll("#teamList input").forEach(c => {
+                    c.checked = true;
+                    selectedTeams.add(c.value);
                 });
-            };
-        }
-
-        function selectAllTeams() {
-            document.querySelectorAll("#teamList input").forEach(c => {
-                c.checked = true;
-                selectedTeams.add(c.value);
-            });
-        }
-
-        function clearAllTeams() {
-            document.querySelectorAll("#teamList input").forEach(c => {
-                c.checked = false;
-            });
-
-            selectedTeams.clear();
-        }
-
-        function closeImportDialog() {
-            document.getElementById("importDialog").style.display = "none";
-        }
-
-        function finishImport() {
-            if (!importedData) {
-                alert("No file loaded.");
-                return;
             }
 
-            if (selectedTeams.size === 0) {
-                alert("No teams selected.");
-                return;
+            function clearAllTeams() {
+                document.querySelectorAll("#teamList input").forEach(c => {
+                    c.checked = false;
+                });
+
+                selectedTeams.clear();
             }
 
-            const eventKey = importedData.event;
+            function closeImportDialog() {
+                document.getElementById("importDialog").style.display = "none";
+            }
 
-            let importedCount = 0;
-            let overwrittenCount = 0;
-
-            selectedTeams.forEach(team => {
-                const teamData = importedData.teams[team];
-
-                if (!teamData) return;
-
-                let exists = false;
-
-                for (let i = 1; i <= 20; i++) {
-                    if (localStorage.getItem(
-                        `scouting_${eventKey}_${team}_round_${i}`
-                    )) {
-                        exists = true;
-                        break;
-                    }
+            function finishImport() {
+                if (!importedData) {
+                    alert("No file loaded.");
+                    return;
                 }
 
-                if (exists) {
-                    const ok = confirm(
-                        `Team ${team} already exists.\nOverwrite its scouting data?`
-                    );
+                if (selectedTeams.size === 0) {
+                    alert("No teams selected.");
+                    return;
+                }
 
-                    if (!ok) return;
+                const eventKey = importedData.event;
+
+                let importedCount = 0;
+                let overwrittenCount = 0;
+
+                selectedTeams.forEach(team => {
+                    const teamData = importedData.teams[team];
+
+                    if (!teamData) return;
+
+                    let exists = false;
 
                     for (let i = 1; i <= 20; i++) {
-                        localStorage.removeItem(
-                            `scouting_${eventKey}_${team}_round_${i}`
-                        );
+                        if (localStorage.getItem(
+                                `scouting_${eventKey}_${team}_round_${i}`
+                            )) {
+                            exists = true;
+                            break;
+                        }
                     }
 
-                    overwrittenCount++;
-                }
+                    if (exists) {
+                        const ok = confirm(
+                            `Team ${team} already exists.\nOverwrite its scouting data?`
+                        );
 
-                Object.keys(teamData.rounds).forEach(round => {
-                    const key =
-                        `scouting_${eventKey}_${team}_round_${round}`;
+                        if (!ok) return;
 
-                    localStorage.setItem(
-                        key,
-                        JSON.stringify(teamData.rounds[round])
-                    );
+                        for (let i = 1; i <= 20; i++) {
+                            localStorage.removeItem(
+                                `scouting_${eventKey}_${team}_round_${i}`
+                            );
+                        }
+
+                        overwrittenCount++;
+                    }
+
+                    Object.keys(teamData.rounds).forEach(round => {
+                        const key =
+                            `scouting_${eventKey}_${team}_round_${round}`;
+
+                        localStorage.setItem(
+                            key,
+                            JSON.stringify(teamData.rounds[round])
+                        );
+                    });
+
+                    importedCount++;
                 });
 
-                importedCount++;
-            });
+                closeImportDialog();
 
-            closeImportDialog();
+                alert(
+                    `Imported ${importedCount} team(s).\n` +
+                    `Overwritten ${overwrittenCount} team(s).`
+                );
 
-            alert(
-                `Imported ${importedCount} team(s).\n` +
-                `Overwritten ${overwrittenCount} team(s).`
-            );
+                const params = getParams();
 
-            const params = getParams();
-
-            if (params.event === eventKey && params.team) {
-                loadRound(eventKey, params.team);
+                if (params.event === eventKey && params.team) {
+                    loadRound(eventKey, params.team);
+                }
             }
-        }
 
-        function triggerImport() {
-            const input = document.getElementById("importFile");
+            function triggerImport() {
+                const input = document.getElementById("importFile");
 
-            input.value = "";
-            input.click();
-        }
+                input.value = "";
+                input.click();
+            }
 
-        
-async function logout() {
-    try {
-        const response = await fetch('/api/logout', {
-            method: 'POST',
-            credentials: 'same-origin'
-        });
 
-        if (response.status === 204) {
-            return;
-        }
+            async function logout() {
+                try {
+                    const response = await fetch('/api/logout', {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
 
-        if (!response.ok) {
-            alert('Logout failed. Please try again.');
-            return;
-        }
+                    if (response.status === 204) {
+                        return;
+                    }
 
-        const result = await response.json();
+                    if (!response.ok) {
+                        alert('Logout failed. Please try again.');
+                        return;
+                    }
 
-        if (result.success) {
-            window.location.href = '/securitytest';
-        }
-    } catch (error) {
-        console.error('Logout failed:', error);
-        alert('Unable to log out. Please try again.');
-    }
-}
+                    const result = await response.json();
 
-    </script>
+                    if (result.success) {
+                        window.location.href = '/securitytest';
+                    }
+                } catch (error) {
+                    console.error('Logout failed:', error);
+                    alert('Unable to log out. Please try again.');
+                }
+            }
+        </script>
 
-    <div id="importDialog"
-         style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
+        <div id="importDialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
 
-        <div style="
+            <div style="
             background:white;
             width:500px;
             max-width:90%;
@@ -843,37 +1044,33 @@ async function logout() {
             border-radius:10px;
         ">
 
-            <h2>Import Scouting Data</h2>
+                <h2>Import Scouting Data</h2>
 
-            <p>Select the teams to import.</p>
+                <p>Select the teams to import.</p>
 
-            <input
-                id="teamSearch"
-                placeholder="Search team..."
-                style="width:100%;padding:8px;margin-bottom:10px;">
+                <input id="teamSearch" placeholder="Search team..." style="width:100%;padding:8px;margin-bottom:10px;">
 
-            <div style="margin-bottom:10px;">
-                <button onclick="selectAllTeams()">Select All</button>
-                <button onclick="clearAllTeams()">Clear</button>
-            </div>
+                <div style="margin-bottom:10px;">
+                    <button onclick="selectAllTeams()">Select All</button>
+                    <button onclick="clearAllTeams()">Clear</button>
+                </div>
 
-            <div
-                id="teamList"
-                style="
+                <div id="teamList" style="
                     border:1px solid #ccc;
                     padding:10px;
                     max-height:350px;
                     overflow:auto;
                 ">
+                </div>
+
+                <br>
+
+                <button onclick="finishImport()">Import Selected</button>
+                <button onclick="closeImportDialog()">Cancel</button>
+
             </div>
-
-            <br>
-
-            <button onclick="finishImport()">Import Selected</button>
-            <button onclick="closeImportDialog()">Cancel</button>
-
         </div>
-    </div>
 
 </body>
+
 </html>
