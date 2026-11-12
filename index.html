@@ -121,21 +121,41 @@
                 </select>
             </div>
 
-         <div>
+      <div style="position:relative;">
+
     <label for="eventSearch">Event:</label><br>
 
     <input
         type="text"
         id="eventSearch"
-        list="eventOptions"
-        placeholder="Type to search events..."
+        placeholder="Search events..."
         autocomplete="off"
-        style="padding:10px;width:320px;"
+        oninput="searchEvents()"
+        onfocus="searchEvents()"
+        style="padding:10px;width:350px;"
     >
 
-    <datalist id="eventOptions"></datalist>
+    <div
+        id="eventResults"
+        style="
+            display:none;
+            position:absolute;
+            top:65px;
+            left:0;
+            width:650px;
+            max-width:90vw;
+            max-height:400px;
+            overflow-y:auto;
+            background:white;
+            border:1px solid #ccc;
+            border-radius:8px;
+            box-shadow:0 4px 10px rgba(0,0,0,.15);
+            z-index:1000;
+        ">
+    </div>
 
     <input type="hidden" id="eventSelect">
+
 </div>
 
         </div>
@@ -175,8 +195,166 @@
 
 <script>
 let allEvents = [];
+let selectedEvent = null;
 let importedData = null;
 let selectedTeams = new Set();
+
+
+function searchEvents() {
+
+    const search = document
+        .getElementById("eventSearch")
+        .value.toLowerCase();
+
+    const results = document.getElementById("eventResults");
+
+    results.innerHTML = "";
+
+    const filtered = allEvents.filter(event => {
+
+        const searchable = [
+            event.name,
+            event.key,
+            event.city,
+            event.state_prov,
+            event.country,
+            event.start_date,
+            event.end_date
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        return searchable.includes(search);
+
+    });
+
+    if (filtered.length === 0) {
+
+        results.innerHTML =
+            '<div style="padding:15px;">No matching events found.</div>';
+
+        results.style.display = "block";
+
+        return;
+    }
+
+    filtered.forEach(event => {
+
+        const row = document.createElement("div");
+
+        row.style.cssText = `
+            padding:12px;
+            border-bottom:1px solid #ddd;
+            cursor:pointer;
+        `;
+
+        const location = [
+            event.city,
+            event.state_prov,
+            event.country
+        ].filter(Boolean).join(", ");
+
+        const week = event.week !== null &&
+                     event.week !== undefined
+            ? `Week ${event.week}`
+            : "Week unavailable";
+
+        row.innerHTML = `
+            <strong>${escapeHTML(event.name)}</strong>
+
+            <div style="
+                display:flex;
+                flex-wrap:wrap;
+                gap:12px;
+                margin-top:7px;
+                font-size:13px;
+                color:#555;
+            ">
+
+                <span>
+                    <strong>Key:</strong>
+                    ${escapeHTML(event.key)}
+                </span>
+
+                <span>
+                    <strong>Start:</strong>
+                    ${escapeHTML(event.start_date || "N/A")}
+                </span>
+
+                <span>
+                    <strong>End:</strong>
+                    ${escapeHTML(event.end_date || "N/A")}
+                </span>
+
+                <span>
+                    <strong>Week:</strong>
+                    ${escapeHTML(String(week))}
+                </span>
+
+            </div>
+
+            <div style="
+                margin-top:5px;
+                font-size:13px;
+                color:#777;
+            ">
+                ${escapeHTML(location)}
+            </div>
+        `;
+
+        row.addEventListener("click", () => {
+
+            selectEvent(event);
+
+        });
+
+        row.addEventListener("mouseenter", () => {
+            row.style.background = "#f0f6ff";
+        });
+
+        row.addEventListener("mouseleave", () => {
+            row.style.background = "white";
+        });
+
+        results.appendChild(row);
+
+    });
+
+    results.style.display = "block";
+}
+
+function selectEvent(event) {
+
+    selectedEvent = event;
+
+    document.getElementById("eventSearch").value =
+        `${event.name} (${event.key})`;
+
+    document.getElementById("eventSelect").value =
+        event.key;
+
+    document.getElementById("eventResults").style.display =
+        "none";
+
+}
+
+
+function getSelectedEvent() {
+
+    return selectedEvent ? selectedEvent.key : "";
+
+}
+
+
+function escapeHTML(value) {
+
+    return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    })[char]);
+
+}
 
 
 // ======================================
@@ -265,12 +443,18 @@ function getSelectedEvent() {
 async function loadEvents() {
 
     const year = document.getElementById("yearSelect").value;
-    const eventOptions = document.getElementById("eventOptions");
-    const eventSearch = document.getElementById("eventSearch");
+
     const status = document.getElementById("status");
 
-    eventOptions.innerHTML = "";
-    eventSearch.value = "";
+    const results = document.getElementById("eventResults");
+
+    document.getElementById("eventSearch").value = "";
+    document.getElementById("eventSelect").value = "";
+
+    selectedEvent = null;
+    allEvents = [];
+
+    results.style.display = "none";
 
     if (!year) return;
 
@@ -280,22 +464,13 @@ async function loadEvents() {
 
         allEvents = await tba(`/events/${year}`);
 
+        if (!Array.isArray(allEvents)) {
+            throw new Error("Invalid event data.");
+        }
+
         allEvents.sort((a, b) =>
             a.start_date.localeCompare(b.start_date)
         );
-
-        allEvents.forEach(event => {
-
-            const option = document.createElement("option");
-
-            option.value =
-                `${event.name} - ${event.city}, ${
-                    event.state_prov || event.country
-                } (${event.key})`;
-
-            eventOptions.appendChild(option);
-
-        });
 
         status.innerText =
             `Loaded ${allEvents.length} events for ${year}.`;
@@ -803,8 +978,13 @@ async function analyzeEventFromURL(eventKey) {
 
         await loadEvents();
 
-        document.getElementById("eventSelect").value = eventKey;
+const event = allEvents.find(e => e.key === eventKey);
 
+if (!event) {
+    throw new Error("Event not found.");
+}
+
+selectEvent(event);
         await analyzeEvent();
 
     } catch (error) {
