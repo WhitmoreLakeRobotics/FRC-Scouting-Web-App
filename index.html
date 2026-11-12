@@ -337,11 +337,6 @@ function selectEvent(event) {
 }
 
 
-function getSelectedEvent() {
-
-    return selectedEvent ? selectedEvent.key : "";
-
-}
 
 
 function escapeHTML(value) {
@@ -972,23 +967,28 @@ window.addEventListener("load", async () => {
 
 async function analyzeEventFromURL(eventKey) {
     try {
-        const event = await tba(`/event/${eventKey}`);
+        const eventData = await tba(`/event/${eventKey}`);
 
-        document.getElementById("yearSelect").value = event.year;
+        document.getElementById("yearSelect").value =
+            eventData.year;
 
         await loadEvents();
 
-const event = allEvents.find(e => e.key === eventKey);
+        const selected = allEvents.find(
+            e => e.key === eventKey
+        );
 
-if (!event) {
-    throw new Error("Event not found.");
-}
+        if (!selected) {
+            throw new Error("Event not found.");
+        }
 
-selectEvent(event);
+        selectEvent(selected);
+
         await analyzeEvent();
 
     } catch (error) {
         console.error(error);
+
         document.getElementById("status").innerText =
             "Could not load event from URL.";
     }
