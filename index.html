@@ -174,18 +174,12 @@
 
 
             async function tba(path) {
-                const response = await fetch(BASE_URL + path, {
-                    headers: {
-                        "X-TBA-Auth-Key": TBA_KEY
-                    }
-                });
+                const response = await fetch(
+                    "/api/tba?path=" + encodeURIComponent(path)
+                );
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-
-                    throw new Error(
-                        `TBA Error ${response.status}: ${path} - ${errorText}`
-                    );
+                    throw new Error(`TBA Error ${response.status}`);
                 }
 
                 return response.json();
@@ -512,6 +506,7 @@
         }
 
         
+
 async function analyzeEvent() {
     const eventKey = document.getElementById("eventSelect").value;
     const status = document.getElementById("status");
@@ -523,27 +518,36 @@ async function analyzeEvent() {
     }
 
     results.innerHTML = "";
-    status.innerText = "Loading event...";
+    status.innerText = "Loading event " + eventKey + "...";
 
     try {
-        // Teams are required.
-        const teams = await tba(
-            ` / event / $ {
+        // Load teams, rankings, and OPR data.
+        const [teamsResult, rankingsResult, oprsResult] =
+            await Promise.allSettled([
+                tba(` / event / $ {
                 eventKey
             }
             /teams/simple
-            `
-        );
-
-        // Rankings and OPR may not be available yet.
-        const [rankingsResult, oprsResult] = await Promise.allSettled([
-            tba(` / event / $ {
+            `),
+                tba(` / event / $ {
                 eventKey
             }
             /rankings`),
             tba(`/event/${eventKey}/oprs`)
             ]);
 
+            // Teams are required.
+            if (teamsResult.status === "rejected") {
+                throw teamsResult.reason;
+            }
+
+            const teams = teamsResult.value;
+
+            if (!Array.isArray(teams)) {
+                throw new Error("Invalid team data returned by TBA.");
+            }
+
+            // Rankings and OPR are optional.
             const rankings = rankingsResult.status === "fulfilled" ?
                 rankingsResult.value :
                 null;
@@ -551,10 +555,6 @@ async function analyzeEvent() {
             const oprs = oprsResult.status === "fulfilled" ?
                 oprsResult.value :
                 null;
-
-            if (!teams || !Array.isArray(teams)) {
-                throw new Error("Invalid team data returned by TBA.");
-            }
 
             const rankingMap = {};
 
@@ -564,6 +564,7 @@ async function analyzeEvent() {
                 });
             }
 
+            // Analyze every team.
             const analyzedTeams = teams.map(team => {
                 const rankData = rankingMap[team.key];
 
@@ -578,10 +579,13 @@ async function analyzeEvent() {
                     teamNumber: team.team_number,
                     nickname: team.nickname || "",
                     teamKey: team.key,
+
                     opr: oprs?.oprs?.[team.key] || 0,
                     ccwm: oprs?.ccwms?.[team.key] || 0,
                     dpr: oprs?.dprs?.[team.key] || 0,
+
                     rank: rankData?.rank || 999,
+
                     wins,
                     losses,
                     winPct
@@ -592,13 +596,20 @@ async function analyzeEvent() {
                 return analyzed;
             });
 
+            // Sort by calculated score.
             analyzedTeams.sort((a, b) => b.score - a.score);
 
+            // Build results table.
             let html = `
             <h3>Event: ${eventKey}</h3>
 
-            ${!rankings ? "<p>Rankings are not available yet.</p>" : ""}
-            ${!oprs ? "<p>OPR statistics are not available yet.</p>" : ""}
+            ${!rankings
+                ? "<p>Rankings are not available yet.</p>"
+                : ""}
+
+            ${!oprs
+                ? "<p>OPR statistics are not available yet.</p>"
+                : ""}
 
             <table>
                 <thead>
@@ -625,17 +636,33 @@ async function analyzeEvent() {
                 html += `
                 <tr class="${cls}">
                     <td>${index + 1}</td>
+
                     <td>
                         <a href="#"
                            onclick="openTeam('${eventKey}','${team.teamNumber}'); return false;">
                             ${team.teamNumber} - ${team.nickname}
                         </a>
                     </td>
-                    <td>${team.rank === 999 ? "N/A" : team.rank}</td>
-                    <td>${team.wins}-${team.losses}</td>
-                    <td>${team.opr.toFixed(2)}</td>
-                    <td>${team.ccwm.toFixed(2)}</td>
-                    <td>${team.score.toFixed(2)}</td>
+
+                    <td>
+                        ${team.rank === 999 ? "N/A" : team.rank}
+                    </td>
+
+                    <td>
+                        ${team.wins}-${team.losses}
+                    </td>
+
+                    <td>
+                        ${team.opr.toFixed(2)}
+                    </td>
+
+                    <td>
+                        ${team.ccwm.toFixed(2)}
+                    </td>
+
+                    <td>
+                        ${team.score.toFixed(2)}
+                    </td>
                 </tr>
             `;
             });
@@ -648,15 +675,17 @@ async function analyzeEvent() {
             results.innerHTML = html;
 
             status.innerText =
-                `Analyzed ${teams.length} teams at ${eventKey}`;
+                `Successfully analyzed ${teams.length} teams at ${eventKey}.`;
 
             }
             catch (error) {
                 console.error("Event analysis failed:", error);
 
-                status.innerText = error.message;
+                status.innerText =
+                    "Error loading event: " + error.message;
             }
             }
+
 
 
             function scoutingKey(eventKey, teamNumber, round) {
