@@ -121,14 +121,22 @@
                 </select>
             </div>
 
-            <div>
-                <label for="eventSelect">Event:</label><br>
-                <select id="eventSelect"
-                    style="padding:10px;width:320px;"
-                    disabled>
-                    <option value="">Select a year first</option>
-                </select>
-            </div>
+         <div>
+    <label for="eventSearch">Event:</label><br>
+
+    <input
+        type="text"
+        id="eventSearch"
+        list="eventOptions"
+        placeholder="Type to search events..."
+        autocomplete="off"
+        style="padding:10px;width:320px;"
+    >
+
+    <datalist id="eventOptions"></datalist>
+
+    <input type="hidden" id="eventSelect">
+</div>
 
         </div>
 
@@ -166,7 +174,7 @@
 </div>
 
 <script>
-
+let allEvents = [];
 let importedData = null;
 let selectedTeams = new Set();
 
@@ -231,6 +239,24 @@ async function tba(path) {
     return response.json();
 }
 
+function getSelectedEvent() {
+
+    const search =
+        document.getElementById("eventSearch").value;
+
+    const event = allEvents.find(event => {
+
+        const label =
+            `${event.name} - ${event.city}, ${
+                event.state_prov || event.country
+            } (${event.key})`;
+
+        return label === search;
+
+    });
+
+    return event ? event.key : "";
+}
 
 // ======================================
 // LOAD EVENTS
@@ -239,71 +265,47 @@ async function tba(path) {
 async function loadEvents() {
 
     const year = document.getElementById("yearSelect").value;
+    const eventOptions = document.getElementById("eventOptions");
+    const eventSearch = document.getElementById("eventSearch");
+    const status = document.getElementById("status");
 
-    const eventSelect =
-        document.getElementById("eventSelect");
+    eventOptions.innerHTML = "";
+    eventSearch.value = "";
 
-    const status =
-        document.getElementById("status");
+    if (!year) return;
 
-    eventSelect.innerHTML =
-        '<option value="">Loading events...</option>';
-
-    eventSelect.disabled = true;
-
-    if (!year) {
-        eventSelect.innerHTML =
-            '<option value="">Select a year first</option>';
-
-        return;
-    }
-
-    status.innerText = "Loading all FRC events...";
+    status.innerText = "Loading events...";
 
     try {
 
-        const events = await tba(`/events/${year}`);
+        allEvents = await tba(`/events/${year}`);
 
-        if (!Array.isArray(events)) {
-            throw new Error("Invalid event data.");
-        }
-
-        events.sort((a, b) =>
+        allEvents.sort((a, b) =>
             a.start_date.localeCompare(b.start_date)
         );
 
-        eventSelect.innerHTML =
-            '<option value="">Select an event</option>';
-
-        events.forEach(event => {
+        allEvents.forEach(event => {
 
             const option = document.createElement("option");
 
-            option.value = event.key;
-
-            option.textContent =
+            option.value =
                 `${event.name} - ${event.city}, ${
                     event.state_prov || event.country
-                }`;
+                } (${event.key})`;
 
-            eventSelect.appendChild(option);
+            eventOptions.appendChild(option);
 
         });
 
-        eventSelect.disabled = false;
-
         status.innerText =
-            `Found ${events.length} FRC events worldwide for ${year}.`;
+            `Loaded ${allEvents.length} events for ${year}.`;
 
     } catch (error) {
 
         console.error(error);
 
-        eventSelect.innerHTML =
-            '<option value="">Failed to load events</option>';
+        status.innerText = "Could not load events.";
 
-        status.innerText =
-            "Could not load events from The Blue Alliance.";
     }
 }
 
@@ -591,7 +593,7 @@ async function loadTeamPage(eventKey, teamNumber) {
 }
 
 async function analyzeEvent() {
-    const eventKey = document.getElementById("eventSelect").value;
+    const eventKey = getSelectedEvent();
     const status = document.getElementById("status");
     const results = document.getElementById("results");
 
