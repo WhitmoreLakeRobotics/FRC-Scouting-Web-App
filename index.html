@@ -413,24 +413,8 @@ async function tba(path) {
 }
 
 function getSelectedEvent() {
-
-    const search =
-        document.getElementById("eventSearch").value;
-
-    const event = allEvents.find(event => {
-
-        const label =
-            `${event.name} - ${event.city}, ${
-                event.state_prov || event.country
-            } (${event.key})`;
-
-        return label === search;
-
-    });
-
-    return event ? event.key : "";
+    return selectedEvent ? selectedEvent.key : "";
 }
-
 // ======================================
 // LOAD EVENTS
 // ======================================
